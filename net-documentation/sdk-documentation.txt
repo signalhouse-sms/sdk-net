@@ -1,0 +1,944 @@
+================================================================================
+                    SIGNALHOUSE .NET SDK DOCUMENTATION
+================================================================================
+
+INSTALLATION
+--------------------------------------------------------------------------------
+  dotnet add package SignalHouseSms.Sdk
+
+  Or add to your .csproj:
+    <PackageReference Include="SignalHouseSms.Sdk" Version="1.5.1" />
+
+
+INITIALIZATION
+--------------------------------------------------------------------------------
+  using SignalHouse.SDK;
+
+  var client = new SignalHouseClient(
+      apiKey: "your-api-token",
+      baseUrl: "https://v2.signalhouse.io"
+  );
+
+  Required options:
+    - apiKey   (string)  JWT token or service user token for authentication
+    - baseUrl  (string)  API base URL
+
+  The SDK throws an ArgumentException at initialization if apiKey or baseUrl
+  is missing.
+
+
+PER-REQUEST TOKEN OVERRIDE
+--------------------------------------------------------------------------------
+  Every SDK method accepts an optional RequestOptions parameter to override
+  the default apiKey for that single request.
+
+  Example:
+    var response = await client.Messages.GetMessagesAsync(
+        page: 1,
+        limit: 10,
+        options: new RequestOptions { Token = "user-specific-jwt-token" }
+    );
+
+  The per-request token takes precedence over the apiKey provided at
+  initialization. The original apiKey remains unchanged.
+
+
+CUSTOM HEADERS
+--------------------------------------------------------------------------------
+  Pass additional headers via the RequestOptions.Headers property:
+
+  Example:
+    var response = await client.Numbers.GetPhoneNumbersAsync(
+        page: 1,
+        limit: 20,
+        options: new RequestOptions
+        {
+            Headers = new Dictionary<string, string>
+            {
+                { "X-Request-Id", "req_abc123" }
+            }
+        }
+    );
+
+
+IDEMPOTENT REQUESTS
+--------------------------------------------------------------------------------
+  Set RequestOptions.IdempotencyKey to make a create, update or delete safe to
+  retry. The SDK sends it as the Idempotency-Key header. A retry with the same
+  key and the same request replays the first response, marked with the
+  response header Idempotent-Replayed: true, instead of running the request
+  again.
+
+  - Use a new key (a UUID is recommended) for each new operation, and reuse
+    it only to retry that exact request.
+  - Keys are scoped to the authenticated user and kept for 24 hours.
+  - Reusing a key for a different request returns 422; retrying while the
+    first request is still running returns 409 with Retry-After.
+  - The SDK never creates a key for you. GET requests ignore it, and the
+    Voice service does not support it.
+
+  Example:
+    var response = await client.Subgroups.CreateSubgroupAsync(
+        new Dictionary<string, object> { { "groupId", "G0000001" }, { "subgroupName", "Support" } },
+        options: new RequestOptions { IdempotencyKey = Guid.NewGuid().ToString() }
+    );
+
+
+================================================================================
+                          DOMAIN METHOD REFERENCE
+================================================================================
+
+AUTH  (client.Auth)
+--------------------------------------------------------------------------------
+  LoginAsync(string email, string password, RequestOptions? options)
+    Login with email and password.
+
+  ResetPasswordAsync(string userId, string newPassword, RequestOptions? options)
+    Reset a user's password.
+
+  GetAuthHistoryAsync(string? groupId, string? userId, int? page, int? limit,
+                      RequestOptions? options)
+    Get token login history.
+
+
+BILLING  (client.Billing)
+--------------------------------------------------------------------------------
+  GetTransactionHistoryAsync(string? groupId, string? subgroupId,
+      string? brandId, string? campaignId, string? entryType,
+      string? transactionType, string? startDate, string? endDate,
+      RequestOptions? options)
+    Get transaction history with filters.
+
+  GetWalletAsync(string? groupId, RequestOptions? options)
+    Get wallet balance and settings.
+
+  UpdateWalletAsync(string groupId, bool? autoRechargeEnabled,
+      long? autoRechargeThreshold, long? autoRechargeToAmount,
+      string? primaryPaymentMethodId, string? secondaryPaymentMethodId,
+      RequestOptions? options)
+    Update wallet auto-recharge settings.
+
+  GetPaymentMethodsAsync(string? groupId, RequestOptions? options)
+    List saved payment methods.
+
+  AddFundsAsync(string groupId, long amount, string paymentMethodId,
+      RequestOptions? options)
+    Add funds to wallet. Amount is in microdollars (1,000,000 = $1.00).
+
+  AddPaymentMethodAsync(string groupId, string paymentMethodId,
+      RequestOptions? options)
+    Save a new payment method.
+
+  RemovePaymentMethodAsync(string groupId, string paymentMethodId,
+      RequestOptions? options)
+    Remove a saved payment method.
+
+  GetInvoiceDetailsAsync(string? groupId, string? subgroupId,
+      string? startDate, string? endDate, RequestOptions? options)
+    Get invoice/billing details.
+
+  GetFeesAsync(string? groupId, RequestOptions? options)
+    Get fee schedule for the group.
+
+
+BRANDS  (client.Brands)
+--------------------------------------------------------------------------------
+  GetBrandsAsync(string? id, string? subgroupId, string? groupId,
+      int? page, int? limit, string? status, string? registrationType,
+      RequestOptions? options, bool? currentTollFreeCarrier)
+    List brands with filters.
+    currentTollFreeCarrier (after options, so pass it by name): with groupId
+    or subgroupId, true returns only toll-free brands that a new toll-free
+    campaign in that group can use (those on the group's current toll-free
+    carrier).
+
+  CreateBrandAsync(object brandData, RequestOptions? options)
+    Create a new 10DLC brand.
+
+  GetBusinessVerificationAsync(string groupId, string? subgroupId,
+      RequestOptions? options)
+    Get a group's business verification, or one subgroup's: whether the
+    group's toll-free brands need one, its status and the submitted details.
+    Sends a GET to /brand/business-verification/:groupId.
+    subgroupId is sent as the query parameter ?subgroupId= only when given.
+    Some groups verify each subgroup's business separately: a platform whose
+    subgroups are separate businesses, set up by Signal House. For those
+    groups subgroupId is required, and leaving it out returns 400. In any
+    other group one business verification covers every subgroup, so a
+    subgroupId given must belong to the group and is otherwise ignored. A
+    subgroupId that isn't in the group returns 404.
+    Returns 200: { groupId, subgroupId, required, status, details,
+    submittedAt, reviewedAt, rejectionReason }. subgroupId is present only
+    when the business verification belongs to one subgroup. required says
+    whether the group's new toll-free brands need one; status is NOT_STARTED,
+    SUBMITTING, IN_REVIEW, VERIFIED or NEEDS_CHANGES; rejectionReason says
+    why it needs changes, or is null.
+
+  SubmitBusinessVerificationAsync(string groupId,
+      Dictionary<string, object> details, string? subgroupId,
+      RequestOptions? options)
+    Submit or update a group's business verification, or one subgroup's.
+    Allowed when it is not started or needs changes. Review usually takes 1–2
+    business days; the toll-free brands it covers stay pending until it is
+    verified.
+    Sends a PUT to /brand/business-verification/:groupId.
+    subgroupId is sent as the query parameter ?subgroupId= only when given;
+    the body is unchanged. Some groups verify each subgroup's business
+    separately: a platform whose subgroups are separate businesses, set up by
+    Signal House. For those groups subgroupId is required, and leaving it out
+    returns 400. In any other group one business verification covers every
+    subgroup, so a subgroupId given must belong to the group and is otherwise
+    ignored. A subgroupId that isn't in the group returns 404, and an
+    inactive subgroup returns 400.
+    details: businessName, businessType, industry, registrationType,
+    registrationNumber, website, street, street2 (optional), city, state,
+    postalCode, country ("US" or "CA") and representative (firstName,
+    lastName, email, phone in E.164, jobTitle, jobLevel).
+    Returns 202 with the GetBusinessVerificationAsync shape, status SUBMITTING.
+
+  UpdateBrandAsync(string brandId, object brandData, RequestOptions? options)
+    Update brand information.
+
+  DeleteBrandAsync(string brandId, RequestOptions? options)
+    Delete (soft) a brand.
+
+  TransferBrandAsync(string subgroupId, string[] brandIds,
+      RequestOptions? options)
+    Transfer brands to a different subgroup.
+
+  GetExternalVettingAsync(string brandId, RequestOptions? options)
+    Get external vetting info for a brand.
+
+  CreateExternalVettingAsync(string brandId, RequestOptions? options)
+    Submit brand for external vetting.
+
+  ImportExternalVettingAsync(string brandId, string vettingProviderId, string vettingId, string? vettingToken, RequestOptions? options)
+    Import an existing external vetting record (not billable).
+
+  RevetBrandAsync(string brandId, RequestOptions? options)
+    Resubmit brand for vetting.
+
+  GetAppealHistoryAsync(string brandId, RequestOptions? options)
+    List identity status appeals for a brand.
+
+  SubmitAppealAsync(string brandId, string[] appealCategories,
+      string explanation, Stream? file, RequestOptions? options)
+    Submit a brand identity status appeal with supporting documentation.
+    Uses multipart/form-data automatically.
+    appealCategories: array of strings (VERIFY_TAX_ID, VERIFY_NON_PROFIT, VERIFY_GOVERNMENT)
+    explanation: string (max 1024 chars)
+    file: Stream (supported: .jpg, .jpeg, .png, .bmp, .raw, .tiff, .pdf, .docx, .htm, .odt, .rtf, .txt, .xml)
+
+
+CAMPAIGNS  (client.Campaigns)
+--------------------------------------------------------------------------------
+  GetCampaignsAsync(string? id, string? brandId, string? subgroupId,
+      string? groupId, int? page, int? limit, string? status,
+      RequestOptions? options)
+    List campaigns with filters.
+
+  CreateCampaignAsync(object campaignData, RequestOptions? options)
+    Create a new 10DLC campaign.
+
+  UpdateCampaignAsync(string campaignId, object campaignData,
+      RequestOptions? options)
+    Update campaign details.
+
+  DeleteCampaignAsync(string campaignId, RequestOptions? options)
+    Delete (soft) a campaign.
+
+  AppealDcaRejectionAsync(string campaignId, string reason,
+      RequestOptions? options)
+    Appeal a DCA-rejected campaign. The campaign must be in DCA_REJECTED status.
+    Sends a POST to /campaign/appealDcaRejection/:campaignId.
+    reason: string (max 2048 chars)
+    Returns 202: { Message: "Campaign DCA appeal has been queued for processing" }
+
+  NudgeDcaForCampaignAsync(string campaignId, RequestOptions? options)
+    Nudge a connectivity partner to prioritize review of a campaign in PENDING_DCA_APPROVAL status.
+    Sends a POST to /campaign/nudge/:campaignId.
+    No request body required.
+    Returns 200: { message: "Nudge successful" }
+
+
+GROUPS  (client.Groups)
+--------------------------------------------------------------------------------
+  GetGroupAsync(string? id, RequestOptions? options)
+    Get group details by ID.
+
+  UpdateGroupAsync(string id, object groupData, RequestOptions? options)
+    Update group information.
+
+
+LANDINGS  (client.Landings)
+--------------------------------------------------------------------------------
+  GetLandingsAsync(string? landingId, RequestOptions? options)
+    Get a landing page by ID.
+
+  GetLandingByBrandIdAsync(string brandId, RequestOptions? options)
+    Get landing page associated with a brand.
+
+  CreateLandingAsync(object landingData, Stream? file,
+      RequestOptions? options)
+    Create a landing page with optional image upload.
+    Uses multipart/form-data automatically.
+
+  UpdateLandingAsync(string landingId, object landingData, Stream? file,
+      RequestOptions? options)
+    Update a landing page with optional image upload.
+    Uses multipart/form-data automatically.
+
+  DeleteLandingAsync(string landingId, RequestOptions? options)
+    Delete a landing page.
+
+
+MESSAGES  (client.Messages)
+--------------------------------------------------------------------------------
+  GetMessagesAsync(string? id, string? campaignId, string? brandId,
+      string? subgroupId, string? groupId, string? status,
+      string? direction, string? messageType, string? carrier,
+      string? sentimentLabel, string? errorCode,
+      string? startDate, string? endDate, string? sortField,
+      string? sortOrder, int? page, int? limit, RequestOptions? options)
+    List messages with extensive filters.
+
+  GetAnalyticsAsync(string? groupId, string? subgroupId, string? brandId,
+      string? campaignId, string? phoneNumber, string? carrier,
+      string? startDate, string? endDate, RequestOptions? options, ...,
+      string? registrationId)
+    Get aggregated message analytics.
+
+  SendSmsAsync(string senderPhoneNumber, string[] recipientPhoneNumbers,
+      string messageBody, string? statusCallbackUrl, bool? enableShortlink,
+      RequestOptions? options)
+    Send an SMS message.
+    Required: senderPhoneNumber, recipientPhoneNumbers, messageBody
+
+  SendMmsAsync(string senderPhoneNumber, string[] recipientPhoneNumbers,
+      string messageBody, string[]? mediaUrls, string? statusCallbackUrl,
+      bool? enableShortlink, bool? enableCompression, Stream[]? images,
+      RequestOptions? options)
+    Send an MMS message with media attachments.
+    Uses multipart/form-data automatically.
+    Required: senderPhoneNumber, recipientPhoneNumbers, messageBody
+
+  SendGroupMessageAsync(string senderPhoneNumber,
+      string[] recipientPhoneNumbers, string messageBody,
+      string[]? mediaUrls, string? statusCallbackUrl,
+      bool? enableShortlink, bool? enableCompression, Stream[]? images,
+      RequestOptions? options)
+    Send a group MMS message.
+    Uses multipart/form-data automatically.
+    Required: senderPhoneNumber, recipientPhoneNumbers, messageBody
+
+  CarrierIdLookupAsync(string phoneNumber, RequestOptions? options = null)
+    Look up the carrier for a phone number.
+    Always performs a fresh lookup (not cached). Billed per request.
+    Required: phoneNumber (10+ digits, no + prefix)
+    Returns: { phoneNumber, carrier, carrierFamily, carrierRegion, ported, type, degradedConfidence, cost }
+
+
+NOTIFICATIONS  (client.Notifications)
+--------------------------------------------------------------------------------
+  GetNotificationsAsync(string? id, string? groupId, int? page, int? limit,
+      string? status, string[]? eventTypes, RequestOptions? options)
+    Get notifications with filters.
+
+  UpdateNotificationStatusAsync(string[] ids, string status,
+      RequestOptions? options)
+    Mark notifications as READ or UNREAD.
+
+  DeleteNotificationAsync(string id, RequestOptions? options)
+    Delete a notification.
+
+
+NUMBERS  (client.Numbers)
+--------------------------------------------------------------------------------
+  GetPhoneNumbersAsync(string? phoneNumber, string? campaignId,
+      string? brandId, string? subgroupId, string? groupId,
+      int? page, int? limit, RequestOptions? options,
+      string? registrationId, bool? currentTollFreeCarrier)
+    List your phone numbers with filters.
+    registrationId: filter to numbers provisioned under this registration.
+    currentTollFreeCarrier (after options, so pass it by name): with groupId
+    or subgroupId, true returns only toll-free numbers that a new toll-free
+    campaign in that group can use (those on the group's current toll-free
+    carrier).
+
+  GetNumberHealthAsync(string phoneNumber, RequestOptions? options)
+    Get the health score, the same one the portal shows, (1–10) for an owned phone number.
+    Returns sevenDay and thirtyDay breakdowns matching the portal.
+
+  GetAvailablePhoneNumbersAsync(bool? smsEnabled, bool? mmsEnabled,
+      bool? voiceEnabled, string? country, string? state, string? npa,
+      string? nxx, string? phoneNumber, int? limit, int? page,
+      RequestOptions? options)
+    Search available numbers for purchase.
+
+  PurchasePhoneNumberAsync(string[] phoneNumbers, string subgroupId,
+      RequestOptions? options)
+    Purchase one or more phone numbers.
+
+  UpdatePhoneNumberAsync(string phoneNumber, object updateData,
+      RequestOptions? options)
+    Update phone number details (e.g., friendly name).
+
+  GetCallerNameAsync(string phoneNumber, RequestOptions? options)
+    Read a number's caller name (CNAM): { phoneNumber, cnam, autoApply,
+    eligible, ineligibleReason }. Roles: api, admin, developer, billing, user.
+
+  SetCallerNameAsync(string phoneNumber, string name, string? brandId,
+      RequestOptions? options)
+    Set a number's caller name (CNAM). brandId is optional (numbers with no
+    campaign only). Roles: api, admin, developer.
+
+  DeleteCallerNameAsync(string phoneNumber, RequestOptions? options)
+    Remove a number's own caller name (CNAM). Roles: api, admin, developer.
+
+  AssignPhoneNumberToCampaignAsync(string campaignId, string[] phoneNumbers,
+      RequestOptions? options)
+    Assign numbers to a campaign.
+
+  UnassignPhoneNumbersFromCampaignsAsync(string[] phoneNumbers,
+      RequestOptions? options)
+    Unassign numbers from their campaigns.
+
+  DeletePhoneNumbersAsync(string[] phoneNumbers, RequestOptions? options)
+    Release phone numbers.
+
+  TransferPhoneNumbersAsync(string[] phoneNumbers, string newSubgroupId,
+      RequestOptions? options)
+    Transfer unassigned numbers between subgroups.
+
+  SearchNpaNxxAsync(string? country, string? state, string? city,
+      string? npa, string? nxx, RequestOptions? options)
+    Search NPA/NXX area code lookup data.
+
+  LookupLocationsAsync(NpaNxxEntry[] entries, RequestOptions? options)
+    Batch lookup city/state for NPA/NXX pairs.
+    entries: [new NpaNxxEntry { Npa = "213", Nxx = "555" }, ...]
+
+  PortInPhoneNumberAsync(Dictionary<string, object> numberData,
+      RequestOptions? options)
+    Submit a port-in request (POST /number/portin).
+    numberData: dictionary containing port-in request data (required).
+
+  GetPortRequestsAsync(string? groupId, string? phoneNumber,
+      string? status, int? page, int? limit, bool? excludeDocuments,
+      RequestOptions? options)
+    Get port-in requests with optional filters (GET /number/portin).
+    All parameters are optional. excludeDocuments: true leaves signatureUrl
+    and billingUrl out of each request.
+
+
+SHORTLINKS  (client.Shortlinks)
+--------------------------------------------------------------------------------
+  GetShortlinkAsync(string? shortlinkId, string? messageId,
+      string? phoneNumber, string? campaignId, string? brandId,
+      string? subgroupId, string? groupId, int? page, int? limit,
+      RequestOptions? options)
+    Get shortlink details and click data.
+
+  GetShortlinkRedirectAsync(string shortlinkId, RequestOptions? options)
+    Get the redirect URL for a shortlink.
+
+  GetOptOutAsync(string code, RequestOptions? options)
+    Public, no auth. GET /shortlink/optout/:code for the alphanumeric-sender
+    opt-out link (sihou.io/o/{code}): { code, senderName, maskedRecipient,
+    optedOut }; 404 for an unknown code.
+
+  ConfirmOptOutAsync(string code, RequestOptions? options)
+    Public, no auth. POST /shortlink/optout/:code (no body) opts the recipient
+    out; idempotent. Returns { code, senderName, maskedRecipient, optedOut: true };
+    404 for an unknown code.
+
+
+SUBGROUPS  (client.Subgroups)
+--------------------------------------------------------------------------------
+  GetSubgroupsAsync(string? id, string? groupId, int? page, int? limit,
+      RequestOptions? options)
+    List subgroups with filters.
+
+  CreateSubgroupAsync(object subgroupData, RequestOptions? options)
+    Create a new subgroup.
+    subgroupData may include optional carrierIdFamily and carrierIdRegion.
+    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+
+  UpdateSubgroupAsync(string id, object updateData, RequestOptions? options)
+    Update subgroup details.
+    updateData may include optional carrierIdFamily and carrierIdRegion.
+    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+    updateData may also include optional cnamAutoApply (bool) and cnamBrandId
+    (string, or null to clear).
+
+  DeleteSubgroupAsync(string id, RequestOptions? options)
+    Delete (deactivate) a subgroup.
+
+
+SUBSCRIPTIONS  (client.Subscriptions)
+--------------------------------------------------------------------------------
+  GetSubscriptionsAsync(string? groupId, bool? onlyActive,
+      RequestOptions? options)
+    Get subscription history for a group.
+
+  SubscribeAsync(string groupId, string templateId, RequestOptions? options)
+    Subscribe a group to a plan.
+
+  UnsubscribeAsync(string groupId, RequestOptions? options)
+    Unsubscribe a group from their current plan.
+
+
+TEMPLATES  (client.Templates)
+--------------------------------------------------------------------------------
+  Versioned templates on /template. Every route is 404 while the API's
+  RCS switch is off.
+  Every call takes groupId (query on reads, body on JSON writes, form field on
+  upload). body is the raw RcsTemplateBody ({channel: "rcs", contentFormat:
+  "rcs.blocks.v1", content: {blocks}, variables, defaults, fallback}); pass a
+  Dictionary, JsonElement or JsonNode so it is sent verbatim. Writes honor
+  RequestOptions.IdempotencyKey.
+
+  CreateAsync(string groupId, string name, object body,
+      string? tag, RequestOptions? options)
+    POST /template. Creates draft version 1; returns 201 {head, version}.
+
+  ListAsync(string groupId, string? state, string? channel,
+      string? tag, string? search, string? sortBy,
+      string? sortOrder, int? page, int? limit, RequestOptions? options)
+    GET /template. state DRAFT|PUBLISHED|ARCHIVED, sortBy
+    name|createdAt|updatedAt; limit default 25, max 100. Returns
+    {data, total, page, limit} of summaries (head + state, hasUnpublishedChanges).
+
+  GetAsync(string templateId, string groupId, string? version,
+      RequestOptions? options)
+    GET /template/:templateId. version is a positive integer, "draft" or
+    "published"; null returns the published version, else the draft. An
+    explicit version never falls back (404).
+
+  UpdateAsync(string templateId, string groupId, string? name,
+      string? tag, bool clearTag, object? body, RequestOptions? options)
+    PUT /template/:templateId. Writes apply directly (last write
+    wins). tag null leaves it unchanged; clearTag: true sends null. body is a
+    full replacement. 409 {code: "TEMPLATE_ARCHIVED"} on an archived template;
+    409 {code: "TEMPLATE_NAME_TAKEN"} when the name is already in use.
+
+  PublishAsync(string templateId, string groupId,
+      RequestOptions? options)
+    POST /template/:templateId/publish. Always publishes the current
+    draft. An incomplete draft is 400 {code: "TEMPLATE_INVALID", errors,
+    warnings}; no draft is 409 {code: "NO_DRAFT"}; a draft that changed
+    while it was being published is 409 {code: "DRAFT_CHANGED"} (publish again).
+
+  ArchiveAsync(string templateId, string groupId,
+      RequestOptions? options)
+    POST /template/:templateId/archive. Returns the head.
+
+  VersionsAsync(string templateId, string groupId, int? page, int? limit,
+      RequestOptions? options)
+    GET /template/:templateId/versions. Version summaries, no bodies.
+
+  ValidateAsync(string templateId, string groupId, object? body,
+      string? version, RequestOptions? options)
+    POST /template/:templateId/validate. Pass exactly one of body or
+    version (a numeric version is sent as a number). Writes nothing; returns
+    {valid, contentHash, validatorVersion, errors, warnings}.
+
+  CapabilitiesAsync(string groupId, string? channel, string? provider,
+      RequestOptions? options)
+    GET /template/capabilities. channel defaults to "rcs"; provider
+    infobip|sinch adds provider limits and unsupported features.
+
+  UploadMediaAsync(string groupId, Stream file, string fileName,
+      RequestOptions? options)
+    POST /template/media, multipart fields file + groupId. Returns 201
+    {mediaId, groupId, url, bytes, mimeType, kind, width, height, createdAt}.
+
+
+USERS  (client.Users)
+--------------------------------------------------------------------------------
+  GetUsersAsync(string? id, string? groupId, string? userType,
+      RequestOptions? options)
+    List users with filters.
+
+  CreateUserAsync(object data, RequestOptions? options)
+    Create a new user.
+
+  CreateServiceUserAsync(object data, RequestOptions? options)
+    Create a service user (API key). Optional allowedIps (IPs/CIDRs) and
+    allowedCountries (ISO 3166-1 alpha-2) restrict where a customer key is accepted from.
+    allowedDestinationCountries (ISO 3166-1 alpha-2) limits the countries it can send
+    messages to; a send to any other country is rejected with 403 DESTINATION_COUNTRY_NOT_ALLOWED.
+
+  UpdateUserAsync(string id, object data, RequestOptions? options)
+    Update user information. For a customer API key, allowedIps / allowedCountries /
+    allowedDestinationCountries replace its restrictions ([] removes one); needs an interactive admin/developer session.
+
+  DeleteUserAsync(string id, RequestOptions? options)
+    Delete (deactivate) a user.
+
+  GetNotificationPreferencesAsync(string id, RequestOptions? options)
+    Get user notification preferences.
+
+  UpdateNotificationPreferencesAsync(string id,
+      object notificationPreferences, RequestOptions? options)
+    Update notification preferences.
+
+
+WEBHOOKS  (client.Webhooks)
+--------------------------------------------------------------------------------
+  GetWebhooksAsync(string? id, string? groupId, string? endpointType,
+      string? phoneNumber, int? page, int? limit, RequestOptions? options)
+    List webhooks with filters.
+
+  CreateWebhookAsync(object webhookData, RequestOptions? options)
+    Create a new webhook.
+
+  UpdateWebhookAsync(string id, object updateData, RequestOptions? options)
+    Update webhook configuration, including authType, apiHeaderPrefix and credentials
+    (changed in place). Responses carry hasSigningSecret/hasCredentials, never secrets.
+
+  RotateWebhookSecretAsync(string id, int? graceSeconds, RequestOptions? options)
+    Rotate the signing secret (or create a first one for an older webhook). Returns the new
+    signingSecret once; the old secret keeps working for graceSeconds (default 24h, max 7 days).
+
+  DeleteWebhookAsync(string id, RequestOptions? options)
+    Delete a webhook.
+
+
+================================================================================
+                          MULTIPART REQUESTS
+================================================================================
+
+  The following methods use multipart/form-data automatically:
+
+    - client.Messages.SendMmsAsync(...)
+    - client.Messages.SendGroupMessageAsync(...)
+    - client.Landings.CreateLandingAsync(...)
+    - client.Landings.UpdateLandingAsync(...)
+    - client.Brands.SubmitAppealAsync(...)
+    - client.Templates.UploadMediaAsync(...)
+
+  You do not need to construct MultipartFormDataContent manually. Pass
+  parameters as normal arguments and the SDK builds the form data internally.
+
+
+================================================================================
+                          QUERY STRING HELPERS
+================================================================================
+
+  The SDK automatically constructs query strings from method parameters.
+  Any parameter with a null value is excluded, so you only need to pass
+  the filters you care about.
+
+  Example:
+    // Only sends ?status=FAILED&page=1&limit=50
+    var messages = await client.Messages.GetMessagesAsync(
+        status: "FAILED",
+        groupId: null,     // excluded
+        direction: null,   // excluded
+        page: 1,
+        limit: 50
+    );
+
+
+================================================================================
+                             VALIDATION
+================================================================================
+
+  The SDK validates required parameters client-side before making any HTTP
+  request. If a required parameter is missing, null, or an empty string,
+  the SDK throws a ValidationException immediately -- no network request
+  is made.
+
+  Validation errors have:
+    - Type:    SignalHouse.SDK.Exceptions.ValidationException
+    - Message: "Missing required parameter: <fieldName>"
+    - Status:  400
+
+
+================================================================================
+                           ERROR HANDLING
+================================================================================
+
+  The SDK uses a standardized response format. Errors are NOT thrown --
+  they are returned as SignalHouseResponse objects with Success = false.
+
+  Success response:
+    { Success = true, Data = { ... }, Status = 200 }
+
+  Error response:
+    { Success = false, Error = "Error message", Status = 400 }
+
+  Error types summary:
+
+    Source                    Behavior                           How to Handle
+    -----------------------------------------------------------------------
+    Missing required param    Throws ValidationException         try/catch
+    HTTP 4xx/5xx from API     Returns SignalHouseResponse         Check response.Success
+    Network failure           Returns SignalHouseResponse         Check response.Success
+
+
+================================================================================
+                       COMPLETE INTEGRATION EXAMPLE
+================================================================================
+
+  using Microsoft.AspNetCore.Mvc;
+  using SignalHouse.SDK;
+  using SignalHouse.SDK.Exceptions;
+  using SignalHouse.SDK.Models;
+
+  var builder = WebApplication.CreateBuilder(args);
+  var app = builder.Build();
+
+  var signalHouse = new SignalHouseClient(
+      apiKey: Environment.GetEnvironmentVariable("SIGNALHOUSE_API_KEY")!,
+      baseUrl: "https://v2.signalhouse.io"
+  );
+
+  // Send an SMS notification
+  app.MapPost("/api/notify", async ([FromBody] NotifyRequest req) =>
+  {
+      try
+      {
+          var response = await signalHouse.Messages.SendSmsAsync(
+              senderPhoneNumber: req.SenderNumber,
+              recipientPhoneNumbers: new[] { req.RecipientNumber },
+              messageBody: req.Message,
+              statusCallbackUrl: $"{Environment.GetEnvironmentVariable("BASE_URL")}/api/delivery-status"
+          );
+
+          if (!response.Success)
+          {
+              return Results.Json(new { error = response.Error },
+                  statusCode: response.Status ?? 500);
+          }
+
+          return Results.Json(new
+          {
+              messageId = response.Data?["messageId"],
+              status = response.Data?["status"]
+          });
+      }
+      catch (ValidationException ex)
+      {
+          return Results.BadRequest(new { error = ex.Message });
+      }
+      catch (Exception)
+      {
+          return Results.StatusCode(500);
+      }
+  });
+
+  // Receive delivery status callbacks
+  app.MapPost("/api/delivery-status", ([FromBody] DeliveryStatus status) =>
+  {
+      Console.WriteLine($"Message {status.MessageId} status: {status.Status}");
+      return Results.Ok(new { received = true });
+  });
+
+  // List phone numbers with per-request token override
+  app.MapGet("/api/numbers", async (HttpContext ctx, int? page, int? limit) =>
+  {
+      var userToken = ctx.Request.Headers.Authorization
+          .ToString().Replace("Bearer ", "");
+
+      var response = await signalHouse.Numbers.GetPhoneNumbersAsync(
+          page: page ?? 1,
+          limit: limit ?? 20,
+          options: new RequestOptions { Token = userToken }
+      );
+
+      if (!response.Success)
+      {
+          return Results.Json(new { error = response.Error },
+              statusCode: response.Status ?? 500);
+      }
+
+      return Results.Json(response.Data);
+  });
+
+  // Get message analytics
+  app.MapGet("/api/analytics", async (string? startDate, string? endDate,
+      string? campaignId) =>
+  {
+      var response = await signalHouse.Messages.GetAnalyticsAsync(
+          startDate: startDate,
+          endDate: endDate,
+          campaignId: campaignId
+      );
+
+      if (!response.Success)
+      {
+          return Results.Json(new { error = response.Error },
+              statusCode: response.Status ?? 500);
+      }
+
+      return Results.Json(response.Data);
+  });
+
+  app.Run("http://localhost:3000");
+
+  record NotifyRequest(string RecipientNumber, string Message,
+      string SenderNumber);
+  record DeliveryStatus(string MessageId, string Status);
+
+
+REGISTRATIONS AND REGIONAL REPORTING
+--------------------------------------------------------------------------------
+A registration is what a jurisdiction (or its provider) requires before a sender
+may message. One model covers every jurisdiction: `region` is the jurisdiction
+(US, GB, CA, AU; any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB) and `type` selects the shape of `data`.
+Types: TEN_DLC_BRAND, TEN_DLC_CAMPAIGN, TOLL_FREE_BRAND, TOLL_FREE_CAMPAIGN,
+SHORT_CODE_BRAND, SHORT_CODE_PROGRAM, SHORT_CODE_LEASE (not available), VIRTUAL_LONG_CODE (UK) and ALPHANUMERIC_SENDER_ID (UK). Kinds: identity, program, sender. Channels: tenDLC, tollFree,
+shortCode, virtualLongCode, alphanumeric.
+
+Start with the catalog. GET /registration/catalog?region= returns {region,
+jurisdiction, sendingRequiresRegistration, registeredThrough, provisioning, types:[{type, kind,
+channel, provider, bundles, quantity:{min,max}, requiresParent, available}]}.
+registeredThrough is "registration" (use this API), "brandsAndCampaigns" (the US:
+register through the Brands and Campaigns APIs) or null (nothing to register, e.g.
+Canada). An unlisted country requires registration and offers no types.
+Quote and submit only a type whose `available` is true; other types answer 400.
+
+GET /registration/quotes?region=&type=&quantity= (1-100, default 1) returns
+{data:[quotes]}, one quote per capability bundle: {capabilities, quantity,
+currency, setupAmount, monthlyAmount, totalSetupAmount, totalMonthlyAmount,
+etaDays}. Amounts are integer microdollars; setupAmount/monthlyAmount are per
+sender and the totals cover the quantity. groupId is optional and staff-only.
+
+Submit on POST /registration (201) with region, type, subgroupId,
+capabilities (one of the type's bundles) and data. Set RequestOptions.IdempotencyKey to make a
+retry safe (see IDEMPOTENT REQUESTS). Worked example, UK Virtual Long Code: type "VIRTUAL_LONG_CODE",
+capabilities ["SMS"] or ["SMS","VOICE"], data {quantity (1-100), useCases (1-10
+strings), voice?}. The voice dossier is required exactly when capabilities
+include VOICE: companyName, companyPhone, companyWebsite, companyEmail,
+address {line1,line2?,city,postalCode,country}, companyDescription,
+campaignName, campaignDescription, optInMethods (WEB|KEYWORD|VERBAL),
+optOutKeywords (STOP and UNSUBSCRIBE), callTypes (LANDLINE|LOCAL|INTERNATIONAL),
+callsPerDay (1-5), callDurationMinutes (1-10, 15, 30, 45 or 60) and termsUrl.
+
+Worked example, UK alphanumeric sender ID: region "GB", type
+"ALPHANUMERIC_SENDER_ID", capabilities ["SMS"], data {requestedSenderId (3-11
+letters, digits, spaces, dots or dashes; at least one letter), trafficOrigin
+(LOCAL: headquartered in the UK | INTERNATIONAL), trafficType (TRANSACTIONAL |
+PROMOTIONAL), companyName, companyCountry, companyWebsite (http/https), industry,
+messageExample, senderRelationship? (required when requestedSenderId differs from
+companyName)}. quantity is always 1; the quote is one ["SMS"] bundle, 6000000
+setup and 6000000 monthly by default. Once the registration is APPROVED,
+data.phoneNumbers holds the granted sender (e.g. ["ACME"]); pass it as the sender
+to send SMS to UK recipients. The server appends "\nOpt out: sihou.io/o/{code}"
+to every message from it, counted in segments and in the estimate.
+
+GET /registration accepts groupId, subgroupId, region, type, kind, status,
+parentRegistrationId, phoneNumber (filter to registrations holding this phone
+number), sortBy (createdAt (default), subgroupId, registrationId, region or
+status), sortOrder (asc or desc (default)), page and limit (max 100) and returns
+{data,totalCount,page,limit}.
+Region and status each take one value or a comma-separated list (e.g.
+status: "PENDING_PROVIDER,APPROVED").
+GET /registration/:registrationId returns
+{registrationId, groupId, subgroupId, region, type, kind, channel, provider,
+externalId, parentRegistrationId, status, stage, capabilities, submittedAt,
+approvedAt, expiresAt, review:{decision,reviewedAt,reason}, data:{...type
+fields}, history:[{status,stage,actor,actorType,timestamp,reason}], createdAt,
+updatedAt}. For VIRTUAL_LONG_CODE, data also carries phoneNumbers, the numbers
+allocated so far. Statuses: DRAFT, SIGNAL_HOUSE_REVIEW, SIGNAL_HOUSE_APPROVED,
+SIGNAL_HOUSE_REJECTED, SUBMITTING, PENDING_PROVIDER, NEEDS_INFORMATION,
+PAYMENT_REQUIRED (the setup fee could not be funded; retried hourly), APPROVED,
+REJECTED, CANCELLED, PENDING_DELETE, DELETED, EXPIRED, RECONCILIATION_REQUIRED.
+`stage` is the provider's step inside a status. Never send from a sender whose
+registration is not APPROVED.
+
+DELETE /registration/:registrationId cancels a registration (roles api, admin,
+developer, user). Allowed from SIGNAL_HOUSE_REVIEW, SIGNAL_HOUSE_APPROVED,
+PENDING_PROVIDER, NEEDS_INFORMATION, PAYMENT_REQUIRED and APPROVED (409
+otherwise). Numbers already allocated stay on the account and stop sending.
+
+Staff only (the admin namespace exists only when the client enables admin, and
+enabling it grants no server permission):
+POST /:registrationId/review {action:"APPROVE"|"REJECT",reason?}; REJECT needs reason.
+POST /:registrationId/corrections {reason,data} saves the type's correctable
+fields (VIRTUAL_LONG_CODE: useCases, voice?) while the provider waits; owner,
+quantity, bundle and provider order are fixed.
+POST /:registrationId/numbers {phoneNumber} allocates a provider-owned number
+through the recovery path.
+POST /:registrationId/reconcile {externalId} links the provider order that was
+placed after an ambiguous submission; never place a second order to retry.
+GET /:registrationId/application?format=json returns {filename,contentType,base64};
+decode base64 before saving the document.
+
+Regional reporting: GET /message, /message/analytics, /message/analytics/detail,
+/message/analytics/by-subgroup, /message/analytics/by-error-code, /message/dnc and
+/message/dnc/analytics accept region and regionScopes; GET
+/message/analytics/filter-options accepts region only. region is US, GB or CA
+(any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB) as a single value, a repeated parameter or a CSV.
+regionScopes is a JSON array of OR-ed branches {region, channels, brandId?,
+campaignId?, phoneNumber?} with channels from tenDLC, virtualLongCode, tollFree,
+shortCode and p2p; [] matches nothing and omitting both keeps the existing scope.
+Example:
+[{"region":"US","channels":["tenDLC"],"brandId":["BUS1"]},
+ {"region":"GB","channels":["virtualLongCode"],"phoneNumber":["447400123456"]}]
+GET /message always accepts them; the analytics and DNC reads accept them only
+where the environment serves hourly analytics and reject them with a 400 elsewhere.
+
+GetAnalyticsAsync, GetAnalyticsDetailAsync, GetAnalyticsThroughputAsync and
+GetDncAnalyticsAsync accept registrationId (the last optional parameter, so pass
+it by name; a single id or a comma-separated list, like campaignId): filter to
+traffic attributed to these registrations (hourly analytics only; a 400 while
+hourly reads are off). Except on GetAnalyticsThroughputAsync, which has no
+phoneNumber filter, a phoneNumber filter takes precedence. GetPhoneNumbersAsync
+accepts a single registrationId (also after options, pass it by name) to list
+the numbers provisioned under that registration.
+
+GetAnalyticsBySubgroupAsync, GetAnalyticsByErrorCodeAsync and GetDncRecordsAsync accept
+registrationId (the last parameter, pass it by name) the same way, with the same hourly-
+only rule and precedence. GetMessagesAsync accepts registrationId (also last) in every
+environment: it filters to messages attributed to those registrations, and a phoneNumber
+filter narrows further. Every method returns 400 when registrationId is combined with
+campaignId.
+
+GetAnalyticsFilterOptionsAsync returns each phone number with its type (TOLL_FREE,
+SHORT_CODE, ALPHANUMERIC, VIRTUAL_LONG_NUMBER, and older local-number spellings) and
+country (ISO-2), null when unknown. TOLL_FREE, SHORT_CODE and ALPHANUMERIC are channels
+by type; a US number of any other type is 10DLC and a non-US one is a Virtual Long Code.
+It also returns Carriers, a plain array of carrier name strings.
+
+UK sending is SMS only, from a +44 virtual long code to GB mobile recipients; MMS
+and group MMS are unavailable. POST /message/estimate accepts a +44 sender
+(recipients 10-15 digits) and returns region "GB", or "CA" for a Canadian sender.
+A READY alphanumeric sender ID (e.g. "ACME") also sends SMS to UK recipients only;
+its estimate includes the opt-out footer.
+
+LANGUAGE EXAMPLE
+  var catalog = await client.Registrations.GetCatalogAsync("GB");
+  var quotes = await client.Registrations.GetQuotesAsync("GB", "VIRTUAL_LONG_CODE", quantity: 1);
+  await client.Registrations.CreateRegistrationAsync(new Dictionary<string, object>
+  {
+      ["region"] = "GB", ["type"] = "VIRTUAL_LONG_CODE", ["subgroupId"] = "SGEXAMPLE",
+      ["capabilities"] = new[] { "SMS" },
+      ["data"] = new Dictionary<string, object> { ["quantity"] = 1, ["useCases"] = new[] { "Support" } },
+  });
+  // UK alphanumeric sender ID
+  await client.Registrations.GetQuotesAsync("GB", "ALPHANUMERIC_SENDER_ID");
+  await client.Registrations.CreateRegistrationAsync(new Dictionary<string, object>
+  {
+      ["region"] = "GB", ["type"] = "ALPHANUMERIC_SENDER_ID", ["subgroupId"] = "SGEXAMPLE",
+      ["capabilities"] = new[] { "SMS" },
+      ["data"] = new Dictionary<string, object>
+      {
+          ["requestedSenderId"] = "ACME", ["trafficOrigin"] = "LOCAL", ["trafficType"] = "TRANSACTIONAL",
+          ["companyName"] = "Acme", ["companyCountry"] = "United Kingdom", ["companyWebsite"] = "https://acme.example",
+          ["industry"] = "Retail", ["messageExample"] = "Your Acme order has shipped.",
+      },
+  });
+  await client.Registrations.GetRegistrationAsync("REG2");   // poll until APPROVED; data.phoneNumbers is ["ACME"]
+  await client.Messages.SendSmsAsync("ACME", new[] { "447400123456" }, "Your Acme order has shipped.");
+  await client.Registrations.GetRegistrationsAsync(region: "GB", status: "PENDING_PROVIDER");
+  await client.Registrations.GetRegistrationAsync("REG1");
+  await client.Registrations.CancelRegistrationAsync("REG1");
+  await client.Registrations.Admin!.ReviewRegistrationAsync("REG1", "APPROVE");   // enableAdmin: true
+  await client.Messages.GetMessagesAsync(region: "US,GB",
+      regionScopes: "[{\"region\":\"GB\",\"channels\":[\"virtualLongCode\"]}]");
+  await client.Messages.GetAnalyticsFilterOptionsAsync("G1", region: "GB");
