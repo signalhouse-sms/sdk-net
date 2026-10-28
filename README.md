@@ -2,6 +2,8 @@
 
 Official .NET SDK for the [SignalHouse](https://signalhouse.io) SMS/MMS messaging platform.
 
+Full API reference and guides: https://app2.signalhouse.io/docs
+
 - Targets **.NET 8**
 - Zero external dependencies (`System.Net.Http` + `System.Text.Json` only)
 - Fully async (`Task<SignalHouseResponse>`) API

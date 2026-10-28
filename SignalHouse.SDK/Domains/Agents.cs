@@ -603,6 +603,106 @@ public sealed class AgentsDomain
     }
 
     /// <summary>
+    /// List paused agent conversations in a group, newest first. A paused conversation is one a
+    /// person took over; the agent stays out of it until it is resumed. Each pause carries
+    /// <c>groupId</c>, <c>subgroupId</c>, <c>channel</c>, <c>endpointValue</c>,
+    /// <c>contactIdentifier</c>, <c>reason</c> ("human_reply", "escalation" or "manual"), <c>pausedBy</c>,
+    /// <c>createdAt</c>, and <c>updatedAt</c>.
+    /// Allowed roles: api, admin, developer, billing, user.
+    /// <c>GET /agent/pauses</c>.
+    /// </summary>
+    /// <param name="groupId">The group whose paused conversations to list (required).</param>
+    /// <param name="subgroupId">Narrow to one subgroup.</param>
+    /// <param name="channel">Narrow to one channel ("sms").</param>
+    /// <param name="endpointValue">Narrow to one agent number (digits only, no "+").</param>
+    /// <param name="contactIdentifier">Narrow to one contact number (digits only, no "+").</param>
+    /// <param name="options">Additional options for the request.</param>
+    public async Task<SignalHouseResponse> GetAgentContactPausesAsync(
+        string groupId,
+        string? subgroupId = null,
+        string? channel = null,
+        string? endpointValue = null,
+        string? contactIdentifier = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId } });
+
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "groupId", groupId },
+            { "subgroupId", subgroupId },
+            { "channel", channel },
+            { "endpointValue", endpointValue },
+            { "contactIdentifier", contactIdentifier },
+        });
+
+        return await _client.RequestAsync($"/agent/pauses{qs}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
+    /// Pause an agent on one conversation (its number + one contact). The agent stops answering
+    /// that contact on that number until the conversation is resumed; there is no timer. The
+    /// conversation's pending replies are rejected. Pausing a paused conversation keeps the
+    /// original pause. <paramref name="pauseData"/> keys: <c>reason</c> ("human_reply" or
+    /// "manual", the default). Returns the pause.
+    /// Allowed roles: api, admin, developer, billing, user.
+    /// <c>PUT /agent/pauses/:channel/:endpointValue/:contactIdentifier</c>.
+    /// </summary>
+    /// <param name="channel">The channel; must be "sms".</param>
+    /// <param name="endpointValue">The agent's number: 10 to 15 digits, country code included, no "+".</param>
+    /// <param name="contactIdentifier">The contact's number: 10 to 15 digits, country code included, no "+".</param>
+    /// <param name="pauseData">The optional pause reason; an empty object is sent when null.</param>
+    /// <param name="options">Additional options for the request.</param>
+    public async Task<SignalHouseResponse> PauseAgentConversationAsync(
+        string channel,
+        string endpointValue,
+        string contactIdentifier,
+        IDictionary<string, object?>? pauseData = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?>
+        {
+            { "channel", channel },
+            { "endpointValue", endpointValue },
+            { "contactIdentifier", contactIdentifier },
+        });
+
+        var safeChannel = Uri.EscapeDataString(channel);
+        var safeEndpointValue = Uri.EscapeDataString(endpointValue);
+        var safeContactIdentifier = Uri.EscapeDataString(contactIdentifier);
+        return await _client.RequestAsync($"/agent/pauses/{safeChannel}/{safeEndpointValue}/{safeContactIdentifier}", HttpMethod.Put, pauseData ?? new Dictionary<string, object?>(), options);
+    }
+
+    /// <summary>
+    /// Resume an agent on a paused conversation, so it answers the contact's next text again.
+    /// Returns the removed pause.
+    /// Allowed roles: api, admin, developer, billing, user.
+    /// <c>DELETE /agent/pauses/:channel/:endpointValue/:contactIdentifier</c>.
+    /// </summary>
+    /// <param name="channel">The channel; must be "sms".</param>
+    /// <param name="endpointValue">The agent's number: 10 to 15 digits, country code included, no "+".</param>
+    /// <param name="contactIdentifier">The contact's number: 10 to 15 digits, country code included, no "+".</param>
+    /// <param name="options">Additional options for the request.</param>
+    public async Task<SignalHouseResponse> ResumeAgentConversationAsync(
+        string channel,
+        string endpointValue,
+        string contactIdentifier,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?>
+        {
+            { "channel", channel },
+            { "endpointValue", endpointValue },
+            { "contactIdentifier", contactIdentifier },
+        });
+
+        var safeChannel = Uri.EscapeDataString(channel);
+        var safeEndpointValue = Uri.EscapeDataString(endpointValue);
+        var safeContactIdentifier = Uri.EscapeDataString(contactIdentifier);
+        return await _client.RequestAsync($"/agent/pauses/{safeChannel}/{safeEndpointValue}/{safeContactIdentifier}", HttpMethod.Delete, options: options);
+    }
+
+    /// <summary>
     /// List held agent replies (the Pending Replies queue) in a group, newest first. Each draft
     /// carries <c>agentReplyDraftId</c>, <c>groupId</c>, <c>subgroupId</c>, <c>agentProfileId</c>,
     /// <c>conversationId</c>, <c>channel</c>, <c>endpointValue</c>, <c>contactPhoneNumber</c>,

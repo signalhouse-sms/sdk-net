@@ -155,38 +155,45 @@ BRANDS  (client.Brands)
   CreateBrandAsync(object brandData, RequestOptions? options)
     Create a new 10DLC brand.
 
-  GetBusinessVerificationAsync(string groupId, string? subgroupId,
+  GetBusinessVerificationsAsync(string groupId, string? subgroupId,
       RequestOptions? options)
-    Get a group's business verification, or one subgroup's: whether the
-    group's toll-free brands need one, its status and the submitted details.
+    List a group's business verifications, newest first, or one subgroup's,
+    and whether the group's toll-free brands need one.
     Sends a GET to /brand/business-verification/:groupId.
     subgroupId is sent as the query parameter ?subgroupId= only when given.
     Some groups verify each subgroup's business separately: a platform whose
     subgroups are separate businesses, set up by Signal House. For those
     groups subgroupId is required, and leaving it out returns 400. In any
-    other group one business verification covers every subgroup, so a
+    other group the business verifications cover every subgroup, so a
     subgroupId given must belong to the group and is otherwise ignored. A
     subgroupId that isn't in the group returns 404.
-    Returns 200: { groupId, subgroupId, required, status, details,
-    submittedAt, reviewedAt, rejectionReason }. subgroupId is present only
-    when the business verification belongs to one subgroup. required says
-    whether the group's new toll-free brands need one; status is NOT_STARTED,
-    SUBMITTING, IN_REVIEW, VERIFIED or NEEDS_CHANGES; rejectionReason says
-    why it needs changes, or is null.
+    Returns 200: { groupId, subgroupId, required, businessVerifications }.
+    subgroupId is present only when the business verifications belong to
+    one subgroup. required says whether the group's new toll-free brands
+    need one. Each business verification is { businessVerificationId,
+    groupId, subgroupId, status, details, submittedAt, reviewedAt,
+    rejectionReason }, with subgroupId only when set; status is SUBMITTING,
+    IN_REVIEW, VERIFIED or NEEDS_CHANGES; rejectionReason says why it needs
+    changes, or is null.
 
-  SubmitBusinessVerificationAsync(string groupId,
+  GetBusinessVerificationAsync(string groupId,
+      string businessVerificationId, RequestOptions? options)
+    Get one of a group's business verifications by its ID.
+    Sends a GET to /brand/business-verification/:groupId/:businessVerificationId.
+    Returns 200: the business verification, as GetBusinessVerificationsAsync
+    lists it, plus required. Returns 404 when it isn't one of the group's.
+
+  CreateBusinessVerificationAsync(string groupId,
       Dictionary<string, object> details, string? subgroupId,
       RequestOptions? options)
-    Submit or update a group's business verification, or one subgroup's.
-    Allowed when it is not started or needs changes. Review usually takes 1–2
-    business days; the toll-free brands it covers stay pending until it is
-    verified.
-    Sends a PUT to /brand/business-verification/:groupId.
+    Create and submit a new business verification, for the group or one
+    subgroup. Review usually takes 1–2 business days.
+    Sends a POST to /brand/business-verification/:groupId.
     subgroupId is sent as the query parameter ?subgroupId= only when given;
     the body is unchanged. Some groups verify each subgroup's business
     separately: a platform whose subgroups are separate businesses, set up by
     Signal House. For those groups subgroupId is required, and leaving it out
-    returns 400. In any other group one business verification covers every
+    returns 400. In any other group the business verifications cover every
     subgroup, so a subgroupId given must belong to the group and is otherwise
     ignored. A subgroupId that isn't in the group returns 404, and an
     inactive subgroup returns 400.
@@ -194,7 +201,28 @@ BRANDS  (client.Brands)
     registrationNumber, website, street, street2 (optional), city, state,
     postalCode, country ("US" or "CA") and representative (firstName,
     lastName, email, phone in E.164, jobTitle, jobLevel).
-    Returns 202 with the GetBusinessVerificationAsync shape, status SUBMITTING.
+    Once it is VERIFIED, a new toll-free brand uses it by sending its ID as
+    tollFree.businessVerificationId to CreateTollFreeBrandAsync. The brand's
+    legal fields (companyName, street, city, state, postalCode, country,
+    firstName, lastName and tollFree's businessRegistrationType, taxId,
+    countryCode and taxIdIssuingCountry) are then optional and come from the
+    business verification. A group whose toll-free brands need a business
+    verification must send it; any other group gets 400 if it does. It
+    can't be changed after the brand is created.
+    Returns 202 with the business verification, status SUBMITTING. Returns
+    400 when the group's toll-free brands don't need a business verification.
+
+  UpdateBusinessVerificationAsync(string groupId,
+      string businessVerificationId, Dictionary<string, object> details,
+      RequestOptions? options)
+    Correct and resubmit a business verification. Allowed only while its
+    status is NEEDS_CHANGES (400 otherwise). Review usually takes 1–2
+    business days; the toll-free brands that use it stay pending until it is
+    verified.
+    Sends a PUT to /brand/business-verification/:groupId/:businessVerificationId
+    with details (as for CreateBusinessVerificationAsync) as the body.
+    Returns 202 with the business verification, status SUBMITTING. Returns
+    404 when it isn't one of the group's.
 
   UpdateBrandAsync(string brandId, object brandData, RequestOptions? options)
     Update brand information.

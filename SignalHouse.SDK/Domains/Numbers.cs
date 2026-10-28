@@ -43,15 +43,20 @@ public sealed class NumbersAdminDomain
     /// </summary>
     /// <param name="portingId">The port-in request ID.</param>
     /// <param name="options">Additional request options.</param>
+    /// <param name="subGroupId">Subgroup to assign when the request has none yet. Ignored if the request
+    /// already has a subgroup assigned -- an existing assignment is never overwritten. Appended last,
+    /// after options, so existing positional callers are unaffected.</param>
     /// <returns>The approved port-in request.</returns>
     public async Task<SignalHouseResponse> ApprovePortRequestAsync(
         string portingId,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        string? subGroupId = null)
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "portingId", portingId } });
 
         var safePortingId = Uri.EscapeDataString(portingId);
-        return await _client.RequestAsync($"/number/portin/{safePortingId}/approve", HttpMethod.Post, options: options);
+        var body = new Dictionary<string, object?> { { "subGroupId", subGroupId } };
+        return await _client.RequestAsync($"/number/portin/{safePortingId}/approve", HttpMethod.Post, body, options);
     }
 
     /// <summary>List campaign-bound Short Code acquisition requests (admin only).</summary>
