@@ -100,6 +100,67 @@ AUTH  (client.Auth)
                       RequestOptions? options)
     Get token login history.
 
+  GetOAuthAuthorizationUrl(string provider, string? next, string? email,
+                           string? linkTicket, string? reauthTicket)
+    Build the URL that starts an OAuth sign-in (a browser redirect, not an
+    API call). provider: "google", "microsoft", "apple", or "sso" (Enterprise
+    SSO, requires email). With linkTicket (from CreateOAuthLinkAsync) it links
+    the provider to the signed-in account instead of signing in; the API then
+    returns the browser to /Settings/Security?pendingLink=<ticket>, which must
+    be passed to ConfirmOAuthLinkAsync. With reauthTicket (from
+    CreateOAuthReauthAsync) the account signs in again to confirm it's them
+    ("sso" needs no email then). Query keys, only those set: email,
+    linkTicket, reauthTicket, next.
+
+  GetOAuthLinksAsync(RequestOptions? options)
+    Sends a GET to /auth/oauth/links.
+    Returns 200: { passwordKnown, links: [{ provider, email, linkedAt,
+    lastLoginAt }] }
+
+  CreateOAuthLinkAsync(string provider, RequestOptions? options)
+    Sends a POST to /auth/oauth/:provider/link ("google", "microsoft" or
+    "apple"). No request body. Requires (and spends) a fresh
+    ConfirmTwoFactorIdentityAsync from the same session.
+    Returns 200: { linkTicket, expiresInSeconds }
+    The provider round trip returns the browser to
+    /Settings/Security?pendingLink=<ticket>; pass it to ConfirmOAuthLinkAsync.
+
+  CreateOAuthReauthAsync(string provider, RequestOptions? options)
+    Sends a POST to /auth/oauth/:provider/reauth ("google", "microsoft",
+    "apple" or "sso", already linked to the account). No request body.
+    Spends nothing.
+    Returns 200: { reauthTicket, reauthSecret, expiresInSeconds } (keep reauthSecret for the confirm call)
+    Pass reauthTicket to GetOAuthAuthorizationUrl; the browser comes back to
+    /Settings/Security with a single-use pendingReauth (the session that
+    started it redeems it with ConfirmOAuthReauthAsync) or reauthError.
+
+  ConfirmOAuthReauthAsync(string pendingReauth, string reauthSecret,
+                          RequestOptions? options)
+    Finish signing in again with a linked provider. Sends a POST to
+    /auth/oauth/reauth/confirm with { pendingReauth, reauthSecret }. pendingReauth
+    is the
+    single-use value (valid 5 minutes) the CreateOAuthReauthAsync round trip returns
+    to /Settings/Security with. It counts only for the same account and
+    session that started it; 400 when expired or used, 403 for another
+    account or session. reauthSecret is the value the create call returned;
+    a wrong or missing secret is refused (403) and uses up the re-sign-in.
+    Returns: { identityConfirmed } (true when 2FA is off, so it counts as a
+    confirmed identity).
+
+  ConfirmOAuthLinkAsync(string pendingLink, RequestOptions? options)
+    Sends a POST to /auth/oauth/links/confirm.
+    Body: { pendingLink } (required; the pendingLink query parameter from the
+    /Settings/Security redirect). Links the provider only for the account the
+    link was started for.
+    Returns 200: the caller's { passwordKnown, links: [{ provider, email,
+    linkedAt, lastLoginAt }] }
+
+  DeleteOAuthLinkAsync(string provider, RequestOptions? options)
+    Sends a DELETE to /auth/oauth/:provider/link ("google", "microsoft",
+    "apple" or "sso"). Requires a fresh ConfirmTwoFactorIdentityAsync.
+    400 when it is the account's only sign-in method.
+    Returns 200: the remaining { passwordKnown, links }
+
 
 BILLING  (client.Billing)
 --------------------------------------------------------------------------------
@@ -296,6 +357,36 @@ GROUPS  (client.Groups)
 
   UpdateGroupAsync(string id, object groupData, RequestOptions? options)
     Update group information.
+
+  GetSsoConfigurationAsync(string groupId, RequestOptions? options)
+    Sends a GET to /group/sso?groupId=... (role: admin).
+    Returns 200: { groupId, available, callbackUrl, connection, domains }
+
+  SaveSsoConnectionAsync(string groupId, string issuer, string clientId,
+      string? clientSecret, bool? enabled, RequestOptions? options)
+    Sends a PUT to /group/sso with { groupId, issuer, clientId,
+    clientSecret?, enabled? } (role: admin). Requires a fresh
+    Auth.ConfirmTwoFactorIdentityAsync. clientSecret is required the first
+    time; omit it to keep the saved one.
+    Returns 200: { groupId, available, callbackUrl, connection, domains }
+
+  DeleteSsoConnectionAsync(string groupId, RequestOptions? options)
+    Sends a DELETE to /group/sso?groupId=... (role: admin). Requires a fresh
+    Auth.ConfirmTwoFactorIdentityAsync.
+    Returns 200: { groupId, available, callbackUrl, connection, domains }
+
+  AddSsoDomainAsync(string groupId, string domain, RequestOptions? options)
+    Sends a POST to /group/sso/domains with { groupId, domain } (role: admin).
+    Returns 200: { groupId, available, callbackUrl, connection, domains }
+
+  VerifySsoDomainAsync(string groupId, string domain, RequestOptions? options)
+    Sends a POST to /group/sso/domains/:domain/verify with { groupId }
+    (role: admin).
+    Returns 200: { groupId, available, callbackUrl, connection, domains }
+
+  RemoveSsoDomainAsync(string groupId, string domain, RequestOptions? options)
+    Sends a DELETE to /group/sso/domains/:domain?groupId=... (role: admin).
+    Returns 200: { groupId, available, callbackUrl, connection, domains }
 
 
 LANDINGS  (client.Landings)

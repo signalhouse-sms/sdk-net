@@ -95,7 +95,7 @@ public class SignalHouseClient
 
         var client = new HttpClientWrapper(apiKey, baseUrl, httpClient);
 
-        Auth = new AuthDomain(client);
+        Auth = new AuthDomain(client, enableAdmin);
         Billing = new BillingDomain(client);
         Brands = new BrandsDomain(client);
         Campaigns = new CampaignsDomain(client, enableAdmin);

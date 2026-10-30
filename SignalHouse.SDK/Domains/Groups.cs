@@ -176,4 +176,148 @@ public sealed class GroupsDomain
         var safeId = Uri.EscapeDataString(id);
         return await _client.RequestAsync($"/group/{safeId}", HttpMethod.Put, groupData, options);
     }
+
+    /// <summary>
+    /// Get a group's Enterprise SSO configuration: whether SSO is available, the redirect URL to register at
+    /// the identity provider, the saved provider (never its client secret), and each claimed domain with the
+    /// DNS TXT record that verifies it. Role: admin.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>A response containing { groupId, available, callbackUrl, connection, domains }.</returns>
+    public async Task<SignalHouseResponse> GetSsoConfigurationAsync(string groupId, RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId } });
+
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "groupId", groupId },
+        });
+
+        return await _client.RequestAsync($"/group/sso{qs}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
+    /// Create or update a group's OpenID Connect identity provider. Requires a fresh
+    /// Auth.ConfirmTwoFactorIdentityAsync from the same session. Role: admin.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    /// <param name="issuer">The provider's https issuer URL.</param>
+    /// <param name="clientId">The client ID registered at the provider.</param>
+    /// <param name="clientSecret">The client secret; required the first time, omit to keep the saved one.</param>
+    /// <param name="enabled">Whether sign-in through the provider is on (default true).</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>A response containing { groupId, available, callbackUrl, connection, domains }.</returns>
+    public async Task<SignalHouseResponse> SaveSsoConnectionAsync(
+        string groupId,
+        string issuer,
+        string clientId,
+        string? clientSecret = null,
+        bool? enabled = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?>
+        {
+            { "groupId", groupId },
+            { "issuer", issuer },
+            { "clientId", clientId },
+        });
+
+        var body = new Dictionary<string, object?>
+        {
+            { "groupId", groupId },
+            { "issuer", issuer },
+            { "clientId", clientId },
+        };
+        if (clientSecret is not null)
+        {
+            body["clientSecret"] = clientSecret;
+        }
+        if (enabled is not null)
+        {
+            body["enabled"] = enabled;
+        }
+
+        return await _client.RequestAsync("/group/sso", HttpMethod.Put, body, options);
+    }
+
+    /// <summary>
+    /// Remove a group's identity provider and its domains, and unlink every account that signed in through it.
+    /// Requires a fresh Auth.ConfirmTwoFactorIdentityAsync from the same session. Role: admin.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>A response containing the (now empty) { groupId, available, callbackUrl, connection, domains }.</returns>
+    public async Task<SignalHouseResponse> DeleteSsoConnectionAsync(string groupId, RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId } });
+
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "groupId", groupId },
+        });
+
+        return await _client.RequestAsync($"/group/sso{qs}", HttpMethod.Delete, options: options);
+    }
+
+    /// <summary>
+    /// Claim an email domain for a group's SSO; the response includes the DNS TXT record that verifies it.
+    /// Role: admin.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    /// <param name="domain">The domain, e.g. "acme.com".</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>A response containing { groupId, available, callbackUrl, connection, domains }.</returns>
+    public async Task<SignalHouseResponse> AddSsoDomainAsync(string groupId, string domain, RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "domain", domain } });
+
+        var body = new Dictionary<string, object?>
+        {
+            { "groupId", groupId },
+            { "domain", domain },
+        };
+
+        return await _client.RequestAsync("/group/sso/domains", HttpMethod.Post, body, options);
+    }
+
+    /// <summary>
+    /// Verify a claimed domain by its DNS TXT record. Role: admin.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    /// <param name="domain">The claimed domain.</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>A response containing { groupId, available, callbackUrl, connection, domains }.</returns>
+    public async Task<SignalHouseResponse> VerifySsoDomainAsync(string groupId, string domain, RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "domain", domain } });
+
+        var body = new Dictionary<string, object?>
+        {
+            { "groupId", groupId },
+        };
+
+        var safeDomain = Uri.EscapeDataString(domain);
+        return await _client.RequestAsync($"/group/sso/domains/{safeDomain}/verify", HttpMethod.Post, body, options);
+    }
+
+    /// <summary>
+    /// Remove a domain from a group's SSO. Role: admin.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    /// <param name="domain">The domain.</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>A response containing { groupId, available, callbackUrl, connection, domains }.</returns>
+    public async Task<SignalHouseResponse> RemoveSsoDomainAsync(string groupId, string domain, RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "domain", domain } });
+
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "groupId", groupId },
+        });
+
+        var safeDomain = Uri.EscapeDataString(domain);
+        return await _client.RequestAsync($"/group/sso/domains/{safeDomain}{qs}", HttpMethod.Delete, options: options);
+    }
 }

@@ -161,44 +161,6 @@ public sealed class BrandsDomain
     }
 
     /// <summary>
-    /// Get a group's toll-free ISV account: the group's own parent account at the toll-free provider, registered by
-    /// Signal House staff. The API key secret is never returned. Staff-only (signalhouse_api, signalhouse_admin or
-    /// signalhouse_user).
-    /// </summary>
-    /// <param name="groupId">The group ID.</param>
-    /// <param name="options">Optional per-request overrides.</param>
-    public async Task<SignalHouseResponse> GetTollFreeIsvAccountAsync(string groupId, RequestOptions? options = null)
-    {
-        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId } });
-
-        var safeGroupId = Uri.EscapeDataString(groupId);
-        return await _client.RequestAsync($"/brand/toll-free-isv-account/{safeGroupId}", HttpMethod.Get, options: options);
-    }
-
-    /// <summary>
-    /// Register a group's toll-free ISV account, or replace the API key of the one already registered. The provider checks
-    /// the account and key before they are stored. Once the group has toll-free records at that provider, only the API key
-    /// of the registered account can be replaced. signalhouse_admin only.
-    /// </summary>
-    /// <param name="groupId">The group ID.</param>
-    /// <param name="accountSid">The ISV's own top-level account SID (AC followed by 32 lowercase hex characters).</param>
-    /// <param name="apiKeySid">The SID of a Main API key in that account (SK followed by 32 lowercase hex characters).</param>
-    /// <param name="apiKeySecret">That API key's secret (1 to 128 characters). It is stored encrypted and never returned.</param>
-    /// <param name="options">Optional per-request overrides.</param>
-    public async Task<SignalHouseResponse> SetTollFreeIsvAccountAsync(string groupId, string accountSid, string apiKeySid, string apiKeySecret, RequestOptions? options = null)
-    {
-        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "accountSid", accountSid }, { "apiKeySid", apiKeySid }, { "apiKeySecret", apiKeySecret } });
-
-        var safeGroupId = Uri.EscapeDataString(groupId);
-        return await _client.RequestAsync($"/brand/toll-free-isv-account/{safeGroupId}", HttpMethod.Put, new
-        {
-            accountSid,
-            apiKeySid,
-            apiKeySecret,
-        }, options);
-    }
-
-    /// <summary>
     /// Create a local Short Code brand for manual Signal House review. registrationType is forced to
     /// SHORT_CODE server-side; the synchronous response is a 201-created PENDING_APPROVAL record
     /// with an SCB-prefixed brandId.

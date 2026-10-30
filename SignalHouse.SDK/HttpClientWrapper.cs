@@ -30,6 +30,11 @@ public sealed class HttpClientWrapper
     }
 
     /// <summary>
+    /// The API base URL this client was configured with, without a trailing slash.
+    /// </summary>
+    internal string BaseUrl => _baseUrl;
+
+    /// <summary>
     /// Send a JSON-body request and return a standardized response.
     /// </summary>
     public async Task<SignalHouseResponse> RequestAsync(
