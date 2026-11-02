@@ -126,8 +126,8 @@ AUTH  (client.Auth)
     /Settings/Security?pendingLink=<ticket>; pass it to ConfirmOAuthLinkAsync.
 
   CreateOAuthReauthAsync(string provider, RequestOptions? options)
-    Sends a POST to /auth/oauth/:provider/reauth ("google", "microsoft",
-    "apple" or "sso", already linked to the account). No request body.
+    Sends a POST to /auth/oauth/:provider/reauth ("microsoft",
+    "apple" or "sso", already linked to the account; Google is refused with 400). No request body.
     Spends nothing.
     Returns 200: { reauthTicket, reauthSecret, expiresInSeconds } (keep reauthSecret for the confirm call)
     Pass reauthTicket to GetOAuthAuthorizationUrl; the browser comes back to

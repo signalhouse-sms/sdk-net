@@ -227,6 +227,23 @@ public sealed class CampaignsDomain
     }
 
     /// <summary>
+    /// Get today's T-Mobile usage against the daily limit for every active campaign in a group that has one: the same limits and counter as GetCampaignThroughputLimitsAsync, for the whole group
+    /// in one call. Response: [{ campaignId, brandId, brandName, usecase, tmobile: { tier, dailyLimit, usedToday: { date, segments, resetsAt } } }].
+    /// Campaigns without a T-Mobile limit (unverified brand, GOVERNMENT entity, PUBLIC_SAFETY_RESTRICTED usecase) are left out. The counter is per brand EIN and UTC day, so every campaign of a brand shows the same usage; a LOW_VOLUME campaign's limit is 2,000 whatever the brand's score.
+    /// </summary>
+    /// <param name="groupId">The group identifier.</param>
+    public async Task<SignalHouseResponse> GetGroupThroughputUsageAsync(
+        string groupId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId } });
+
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?> { { "groupId", groupId } });
+
+        return await _client.RequestAsync($"/campaign/throughput-usage{qs}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
     /// Create a new campaign.
     /// </summary>
     /// <param name="campaignData">Campaign creation payload. Optional "sampleMediaIds" (10DLC only): up to 5 mediaId strings from UploadSampleMediaAsync, attached to the TCR campaign as sample MMS media for carrier review.</param>

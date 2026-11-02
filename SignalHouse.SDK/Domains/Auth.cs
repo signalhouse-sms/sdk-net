@@ -250,7 +250,7 @@ public sealed class AuthDomain
     /// with a single-use <c>pendingReauth</c> (the session that started it redeems it with ConfirmOAuthReauthAsync) or <c>reauthError</c> (reauth_wrong_account, reauth_unsupported, reauth_stale,
     /// invalid_state, sso_not_configured, access_denied or provider_error).
     /// </summary>
-    /// <param name="provider">"google", "microsoft", "apple" or "sso"; must be linked to the account.</param>
+    /// <param name="provider">"microsoft", "apple" or "sso"; must be linked to the account. Google is refused with a 400 because it can't confirm a fresh sign-in; confirm with a code instead.</param>
     /// <param name="options">Optional per-request overrides.</param>
     /// <returns>A response containing { reauthTicket, reauthSecret, expiresInSeconds }. Keep reauthSecret in the client
     /// that started the flow: it is returned only here, and ConfirmOAuthReauthAsync needs it.</returns>
@@ -296,7 +296,7 @@ public sealed class AuthDomain
     }
 
     /// <summary>
-    /// Unlink a provider from the caller's account. Refused (400) when it is the account's only way to sign in.
+    /// Unlink a provider from the caller's account. Refused (400) when it is the account's only way to sign in. With 2FA on and no password, the last linked Microsoft, Apple or SSO sign-in is refused (400) too.
     /// Requires a fresh ConfirmTwoFactorIdentityAsync from the same session (403 otherwise).
     /// </summary>
     /// <param name="provider">"google", "microsoft", "apple" or "sso".</param>
