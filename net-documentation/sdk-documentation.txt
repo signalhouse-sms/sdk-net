@@ -212,78 +212,76 @@ BRANDS  (client.Brands)
     or subgroupId, true returns only toll-free brands that a new toll-free
     campaign in that group can use (those on the group's current toll-free
     carrier).
+    Each toll-free brand carries tollFree.reviewsBusinessOnSubmit: whether
+    it's reviewed when it's submitted and keeps its business details from
+    then on. When that is true, the brand also carries its tollFree
+    businessStructure, industry, contactEmail, contactJobTitle and
+    contactJobLevel, and tollFree.rejectionReason: why it was rejected, in
+    plain English, or null. On other brands these are null or absent.
 
   CreateBrandAsync(object brandData, RequestOptions? options)
     Create a new 10DLC brand.
 
-  GetBusinessVerificationsAsync(string groupId, string? subgroupId,
+  CreateTollFreeBrandAsync(Dictionary<string, object> brandData,
       RequestOptions? options)
-    List a group's business verifications, newest first, or one subgroup's,
-    and whether the group's toll-free brands need one.
-    Sends a GET to /brand/business-verification/:groupId.
-    subgroupId is sent as the query parameter ?subgroupId= only when given.
-    Some groups verify each subgroup's business separately: a platform whose
-    subgroups are separate businesses, set up by Signal House. For those
-    groups subgroupId is required, and leaving it out returns 400. In any
-    other group the business verifications cover every subgroup, so a
-    subgroupId given must belong to the group and is otherwise ignored. A
-    subgroupId that isn't in the group returns 404.
-    Returns 200: { groupId, subgroupId, required, businessVerifications }.
-    subgroupId is present only when the business verifications belong to
-    one subgroup. required says whether the group's new toll-free brands
-    need one. Each business verification is { businessVerificationId,
-    groupId, subgroupId, status, details, submittedAt, reviewedAt,
-    rejectionReason }, with subgroupId only when set; status is SUBMITTING,
-    IN_REVIEW, VERIFIED or NEEDS_CHANGES; rejectionReason says why it needs
-    changes, or is null.
+    Create a new Toll-Free brand. Sends a POST to /brand/toll-free with
+    brandData as the body; registrationType is forced to TOLL_FREE.
+    Toll-Free fields go under brandData["tollFree"]. tollFree.supportPhone
+    must be E.164 with an optional leading "+" and no spaces, parentheses or
+    hyphens (e.g. "17025550100").
+    Some groups' toll-free brands are reviewed when they're submitted:
+    GetTollFreeRequirementsAsync says whether a group's are. A brand in such
+    a group also needs these under tollFree, where the contact is the person
+    named by firstName and lastName:
+      businessStructure  CO_OPERATIVE, CORPORATION,
+                         LIMITED_LIABILITY_CORPORATION,
+                         NON_PROFIT_CORPORATION or PARTNERSHIP
+      industry           AGRICULTURE, AUTOMOTIVE, BANKING, CONSTRUCTION,
+                         CONSUMER, EDUCATION, ELECTRONICS, ENGINEERING,
+                         ENERGY, FAST_MOVING_CONSUMER_GOODS, FINANCIAL,
+                         FINTECH, FOOD_AND_BEVERAGE, GOVERNMENT,
+                         HEALTHCARE, HOSPITALITY, INSURANCE, JEWELRY,
+                         LEGAL, MANUFACTURING, MEDIA, NOT_FOR_PROFIT,
+                         OIL_AND_GAS, ONLINE, PROFESSIONAL_SERVICES,
+                         RAW_MATERIALS, REAL_ESTATE, RELIGION, RETAIL,
+                         TECHNOLOGY, TELECOMMUNICATIONS, TRANSPORTATION
+                         or TRAVEL
+      contactEmail       the contact's email address (a valid email, at
+                         most 100 characters)
+      contactJobTitle    the contact's job title (1 to 100 characters)
+      contactJobLevel    the contact's job level: DIRECTOR, GM, VP, CEO,
+                         CFO, GENERAL_COUNSEL or OTHER
+    Its tollFree.countryCode must be "US" or "CA", and its state a 2-letter
+    state or province code. In any other group, sending businessStructure,
+    industry, contactEmail, contactJobTitle or contactJobLevel returns 400.
+    A brand in a group whose toll-free brands are reviewed when they're
+    submitted stays DCA_PENDING until it's reviewed, which usually takes 1–2
+    business days. It then becomes DCA_ACTIVE if it passes, or DCA_REJECTED,
+    with tollFree.rejectionReason saying why, if it doesn't. A rejected
+    brand is fixed by creating the brand again with the corrections. Its
+    business details can't be changed after it's submitted: companyName,
+    street, city, state, postalCode, country, firstName, lastName, and
+    tollFree's businessRegistrationType, taxId, countryCode,
+    taxIdIssuingCountry, businessStructure, industry, contactEmail,
+    contactJobTitle and contactJobLevel.
+    Returns 202 with the new brand, status PENDING_CREATION. Its
+    tollFree.reviewsBusinessOnSubmit says whether it's reviewed when it's
+    submitted.
 
-  GetBusinessVerificationAsync(string groupId,
-      string businessVerificationId, RequestOptions? options)
-    Get one of a group's business verifications by its ID.
-    Sends a GET to /brand/business-verification/:groupId/:businessVerificationId.
-    Returns 200: the business verification, as GetBusinessVerificationsAsync
-    lists it, plus required. Returns 404 when it isn't one of the group's.
-
-  CreateBusinessVerificationAsync(string groupId,
-      Dictionary<string, object> details, string? subgroupId,
-      RequestOptions? options)
-    Create and submit a new business verification, for the group or one
-    subgroup. Review usually takes 1–2 business days.
-    Sends a POST to /brand/business-verification/:groupId.
-    subgroupId is sent as the query parameter ?subgroupId= only when given;
-    the body is unchanged. Some groups verify each subgroup's business
-    separately: a platform whose subgroups are separate businesses, set up by
-    Signal House. For those groups subgroupId is required, and leaving it out
-    returns 400. In any other group the business verifications cover every
-    subgroup, so a subgroupId given must belong to the group and is otherwise
-    ignored. A subgroupId that isn't in the group returns 404, and an
-    inactive subgroup returns 400.
-    details: businessName, businessType, industry, registrationType,
-    registrationNumber, website, street, street2 (optional), city, state,
-    postalCode, country ("US" or "CA") and representative (firstName,
-    lastName, email, phone in E.164, jobTitle, jobLevel).
-    Once it is VERIFIED, a new toll-free brand uses it by sending its ID as
-    tollFree.businessVerificationId to CreateTollFreeBrandAsync. The brand's
-    legal fields (companyName, street, city, state, postalCode, country,
-    firstName, lastName and tollFree's businessRegistrationType, taxId,
-    countryCode and taxIdIssuingCountry) are then optional and come from the
-    business verification. A group whose toll-free brands need a business
-    verification must send it; any other group gets 400 if it does. It
-    can't be changed after the brand is created.
-    Returns 202 with the business verification, status SUBMITTING. Returns
-    400 when the group's toll-free brands don't need a business verification.
-
-  UpdateBusinessVerificationAsync(string groupId,
-      string businessVerificationId, Dictionary<string, object> details,
-      RequestOptions? options)
-    Correct and resubmit a business verification. Allowed only while its
-    status is NEEDS_CHANGES (400 otherwise). Review usually takes 1–2
-    business days; the toll-free brands that use it stay pending until it is
-    verified.
-    Sends a PUT to /brand/business-verification/:groupId/:businessVerificationId
-    with details (as for CreateBusinessVerificationAsync) as the body.
-    Returns 202 with the business verification, status SUBMITTING. Returns
-    404 when it isn't one of the group's.
+  GetTollFreeRequirementsAsync(string groupId, RequestOptions? options)
+    Get whether a group's new toll-free brands are reviewed when they're
+    submitted, which decides what they need.
+    Sends a GET to /brand/toll-free-requirements/:groupId. Works for any
+    group the caller can view; any other group returns 403.
+    Returns 200: { groupId, reviewsBusinessOnSubmit }. When
+    reviewsBusinessOnSubmit is true, a new toll-free brand needs tollFree's
+    businessStructure, industry, contactEmail, contactJobTitle and
+    contactJobLevel, a tollFree.countryCode of "US" or "CA", and a 2-letter
+    state or province code as its state. It stays DCA_PENDING until it's
+    reviewed, and its business details can't be changed after it's
+    submitted. When reviewsBusinessOnSubmit is false, tollFree's
+    businessStructure, industry, contactEmail, contactJobTitle and
+    contactJobLevel are refused (400).
 
   UpdateBrandAsync(string brandId, object brandData, RequestOptions? options)
     Update brand information.
@@ -614,10 +612,13 @@ TEMPLATES  (client.Templates)
   Versioned templates on /template. Every route is 404 while the API's
   RCS switch is off.
   Every call takes groupId (query on reads, body on JSON writes, form field on
-  upload). body is the raw RcsTemplateBody ({channel: "rcs", contentFormat:
-  "rcs.blocks.v1", content: {blocks}, variables, defaults, fallback}); pass a
-  Dictionary, JsonElement or JsonNode so it is sent verbatim. Writes honor
-  RequestOptions.IdempotencyKey.
+  upload). body is the raw RcsTemplateBody ({channel: "rcs", contentFormat?,
+  content, variables, defaults, fallback}); pass a Dictionary, JsonElement or
+  JsonNode so it is sent verbatim. contentFormat defaults to "content.v1"
+  (content: {blocks}, the only format the API stores and returns);
+  "google.rcs" sends Google's RBM AgentContentMessage as content, which the
+  API converts. A VIEW_LOCATION suggestion takes latitude/longitude or an
+  address the API geocodes. Writes honor RequestOptions.IdempotencyKey.
 
   CreateAsync(string groupId, string name, object body,
       string? tag, RequestOptions? options)
@@ -669,10 +670,108 @@ TEMPLATES  (client.Templates)
     GET /template/capabilities. channel defaults to "rcs"; provider
     infobip|sinch adds provider limits and unsupported features.
 
+  GeocodeAddressAsync(string groupId, string address,
+      RequestOptions? options)
+    GET /template/geocode. Resolves an address to {address, latitude,
+    longitude, partialMatch} for a VIEW_LOCATION suggestion. 400
+    LOCATION_NOT_FOUND when nothing matches; 429 past the group's lookup
+    window; 503 when the server has no geocoding provider.
+
   UploadMediaAsync(string groupId, Stream file, string fileName,
       RequestOptions? options)
     POST /template/media, multipart fields file + groupId. Returns 201
     {mediaId, groupId, url, bytes, mimeType, kind, width, height, createdAt}.
+
+
+RCS AGENTS  (client.Rcs.Agents)
+--------------------------------------------------------------------------------
+  RCS agents under /rcs/agent. An agent links one 10DLC brand and one 10DLC
+  campaign: the campaign's numbers are its SMS fallback, and the brand and
+  campaign supply the company identity and consent text for the carrier
+  launch. One brand or campaign can serve many agents. An agent is a
+  registration (type RCS_AGENT, agentId = registrationId "RCSA" + 10
+  characters). 404 while RCS is disabled for the environment; 400 while the
+  group's rcsEnabled flag is off. To use a new brand and campaign, create the
+  brand (Brands.CreateBrandAsync), wait until it is VERIFIED, create the
+  campaign (Campaigns.CreateCampaignAsync), then link them. agent, consent and
+  defaultFallback take a Dictionary, JsonElement or JsonNode. Null arguments
+  are left out of the body. Writes honor RequestOptions.IdempotencyKey.
+
+  The agent: { agentId, groupId, subgroupId, status, registrationStatus,
+  stage, brandId, brandRef, campaignId, campaignRef, links, agent, consent,
+  useCase, billingCategory, defaultFallback, excludedCarriers, testers,
+  contact, testerInvites, carriers, launchable, review, submittedAt,
+  approvedAt, history,
+  createdAt, updatedAt }. launchable is true
+  when the launch request would be accepted now. brandRef and
+  campaignRef are the linked records' _ids; brandId and campaignId are their
+  current public ids (brandId is null until TCR assigns one). links = {
+  brand: { state: OK | NOT_VERIFIED | MISSING, ... }, campaign: { state: OK |
+  NOT_ACTIVE | MISSING | NONE, ... } }; a deleted brand or campaign reads
+  MISSING. status: DRAFT, PENDING_REVIEW, REJECTED, AGENT_CREATING (approved,
+  waiting for the carrier launch), ARCHIVED.
+
+  CreateAsync(string brandId, string? campaignId, object? agent,
+      object? consent, string? useCase, string? billingCategory,
+      object? defaultFallback, List<string>? excludedCarriers,
+      List<string>? testers, RequestOptions? options); contact is an object
+      like agent
+    POST /rcs/agent. Create a draft (201). brandId is a carrier brand ID,
+    provisional UUID or _id; campaignId (optional until submit) is a campaign
+    ID or _id of that brand. The agent's subgroup is the brand's. Blank
+    consent fields fill from the campaign. Required: brandId
+
+  ListAsync(string? groupId, string? subgroupId, string? status,
+      string? brandId, string? campaignId, int? page, int? limit,
+      RequestOptions? options)
+    GET /rcs/agent. List agents, newest first. status is one value or a
+    comma-separated list. brandId / campaignId return the agents linked to
+    that brand or campaign. Returns {data, total, page, limit}.
+
+  GetAsync(string agentId, RequestOptions? options)
+    GET /rcs/agent/:agentId. One agent with the live state of its links.
+
+  UpdateAsync(string agentId, string? brandId, string? campaignId,
+      bool unlinkCampaign, object? agent, object? consent, string? useCase,
+      string? billingCategory, object? defaultFallback,
+      List<string>? excludedCarriers, List<string>? testers,
+      bool clearUseCase, bool clearDefaultFallback, RequestOptions? options)
+    PUT /rcs/agent/:agentId. Edit a DRAFT or REJECTED agent. agent and
+    consent merge field by field; other keys replace; unlinkCampaign: true
+    sends campaignId: null to unlink, and clearUseCase / clearDefaultFallback
+    send useCase / defaultFallback as null. 409 once submitted.
+
+  ValidateAsync(string agentId, RequestOptions? options)
+    POST /rcs/agent/:agentId/validate. Returns {valid, errors, warnings} of
+    {field, reason}; writes nothing.
+
+  SubmitAsync(string agentId, RequestOptions? options)
+    POST /rcs/agent/:agentId/submit. Create the agent at the carrier partner,
+    with no review first. Needs the full profile, useCase and
+    NON_CONVERSATIONAL billing; otherwise 400 with details {code:
+    "REGISTRATION_INCOMPLETE", errors, warnings}. The agent moves to
+    AGENT_CREATING, then IN_TESTING once the partner reports it ready.
+
+  LaunchAsync(string agentId, RequestOptions? options)
+    POST /registration/:agentId/launch. Request the launch: the launch
+    requirements are checked (a VERIFIED brand, the campaign, the full consent
+    with the launch video, the contact) and the agent goes to PENDING_REVIEW;
+    Signal House's approval files the launch with the carrier partner. Allowed
+    from IN_TESTING, REJECTED and CARRIER_REJECTED (409 otherwise); a failed
+    requirement is 400 REGISTRATION_INCOMPLETE.
+
+  ArchiveAsync(string agentId, RequestOptions? options)
+    POST /rcs/agent/:agentId/archive. Archive the agent.
+
+  ResendTesterInviteAsync(string agentId, string phoneNumber, RequestOptions? options)
+    POST /rcs/agent/:agentId/testers/:phoneNumber/resend. Resend a tester's expired invitation.
+
+  UploadAssetAsync(string agentId, string kind, Stream file,
+      string? fileName, RequestOptions? options)
+    POST /rcs/agent/:agentId/asset, multipart fields kind + file. Host a logo
+    (224 x 224 px, 50 KB max) or hero (1440 x 448 px, 200 KB max) PNG or
+    JPEG and set it on the draft. kind: logo | hero.
+    Required: agentId, kind, file
 
 
 USERS  (client.Users)
@@ -952,11 +1051,14 @@ to every message from it, counted in segments and in the estimate.
 
 GET /registration accepts groupId, subgroupId, region, type, kind, status,
 parentRegistrationId, phoneNumber (filter to registrations holding this phone
-number), sortBy (createdAt (default), subgroupId, registrationId, region or
+number), brandId, campaignId (RCS agents linked to that 10DLC brand or
+campaign), sortBy (createdAt (default), subgroupId, registrationId, region or
 status), sortOrder (asc or desc (default)), page and limit (max 100) and returns
 {data,totalCount,page,limit}.
 Region and status each take one value or a comma-separated list (e.g.
 status: "PENDING_PROVIDER,APPROVED").
+In GetRegistrationsAsync, brandId and campaignId come after options, so earlier
+positional calls keep their meaning; pass them by name (brandId: "B1A2C3D").
 GET /registration/:registrationId returns
 {registrationId, groupId, subgroupId, region, type, kind, channel, provider,
 externalId, parentRegistrationId, status, stage, capabilities, submittedAt,
@@ -973,7 +1075,24 @@ registration is not APPROVED.
 DELETE /registration/:registrationId cancels a registration (roles api, admin,
 developer, user). Allowed from SIGNAL_HOUSE_REVIEW, SIGNAL_HOUSE_APPROVED,
 PENDING_PROVIDER, NEEDS_INFORMATION, PAYMENT_REQUIRED and APPROVED (409
-otherwise). Numbers already allocated stay on the account and stop sending.
+otherwise); a type that keeps drafts (RCS_AGENT) can also be cancelled from
+DRAFT and SIGNAL_HOUSE_REJECTED. Numbers already allocated stay on the account
+and stop sending.
+
+UpdateRegistrationAsync(registrationId, data) sends PUT
+/registration/:registrationId with data as the body to edit a DRAFT or
+SIGNAL_HOUSE_REJECTED registration of a type that keeps drafts (409
+otherwise). ValidateRegistrationAsync(registrationId) sends POST
+/registration/:registrationId/validate and returns {valid, errors, warnings};
+it writes nothing. SubmitRegistrationAsync(registrationId) sends POST
+/registration/:registrationId/submit and moves a draft to SIGNAL_HOUSE_REVIEW,
+or to SUBMITTING for a type Signal House does not review first (RCS_AGENT,
+filed with the provider at once) (400 REGISTRATION_INCOMPLETE with the errors,
+409 on a second submit). LaunchRegistrationAsync(registrationId) sends POST
+/registration/:registrationId/launch: an RCS agent the carrier partner holds in
+testing goes to SIGNAL_HOUSE_REVIEW, whose approval files the launch (409 unless
+the agent is in testing, Signal House rejected an earlier request, or every
+carrier refused one; 400 REGISTRATION_INCOMPLETE with the errors).
 
 Staff only (the admin namespace exists only when the client enables admin, and
 enabling it grants no server permission):

@@ -21,6 +21,10 @@ public sealed class BrandsDomain
     /// <summary>
     /// Get a list of brands with optional filters. brandId may be null until carrier assignment.
     /// Each brand carries `carrierSuspensions` (carrier brand suspension rules; active while liftedAt is null).
+    /// Each toll-free brand carries `tollFree.reviewsBusinessOnSubmit`: whether it's reviewed when it's submitted and keeps
+    /// its business details from then on. When that is true, the brand also carries its tollFree businessStructure,
+    /// industry, contactEmail, contactJobTitle and contactJobLevel, and `tollFree.rejectionReason`: why it was rejected,
+    /// in plain English, or null. On other brands these are null or absent.
     /// </summary>
     /// <param name="registrationType">Optional registration-type filter ("TEN_DLC", "TOLL_FREE", or "SHORT_CODE").</param>
     /// <param name="currentTollFreeCarrier">With groupId or subgroupId: when true, return only toll-free brands that a new toll-free campaign in that group can use (those on the group's current toll-free carrier).</param>
@@ -79,8 +83,15 @@ public sealed class BrandsDomain
     /// Create a new Toll-Free (TFN) brand. registrationType is forced to TOLL_FREE server-side.
     /// TFN-specific fields live under brandData["tollFree"]. Response brandId is a TFNB-prefixed id
     /// when assigned; otherwise null — poll by _id.
+    /// Some groups' toll-free brands are reviewed when they're submitted: <see cref="GetTollFreeRequirementsAsync"/> says
+    /// whether a group's are, and the response's tollFree.reviewsBusinessOnSubmit whether the brand is. Such a brand stays
+    /// DCA_PENDING until it's reviewed, which usually takes 1–2 business days, then becomes DCA_ACTIVE if it passes, or
+    /// DCA_REJECTED with tollFree.rejectionReason saying why if it doesn't. A rejected brand is fixed by creating the brand
+    /// again with the corrections. Its business details can't be changed after it's submitted: companyName, street, city,
+    /// state, postalCode, country, firstName, lastName, and tollFree's businessRegistrationType, taxId, countryCode,
+    /// taxIdIssuingCountry, businessStructure, industry, contactEmail, contactJobTitle and contactJobLevel.
     /// </summary>
-    /// <param name="brandData">Toll-Free brand creation payload (see API docs for required fields, including the tollFree sub-object). tollFree.supportPhone must be E.164 with an optional leading "+" and no spaces, parentheses or hyphens (e.g. "17025550100"). tollFree.businessVerificationId names the VERIFIED business verification the brand uses (starts with BV): required for a group whose toll-free brands need a business verification (in a group that verifies each subgroup's business separately, one of the brand's subgroup's), refused (400) for any other group, and fixed once the brand is created. With it, the legal fields (companyName, street, city, state, postalCode, country, firstName, lastName and tollFree's businessRegistrationType, taxId, countryCode and taxIdIssuingCountry) are optional: the business verification's values replace any that are sent.</param>
+    /// <param name="brandData">Toll-Free brand creation payload (see API docs for required fields, including the tollFree sub-object). tollFree.supportPhone must be E.164 with an optional leading "+" and no spaces, parentheses or hyphens (e.g. "17025550100"). A group whose toll-free brands are reviewed when they're submitted must also send tollFree.businessStructure (CO_OPERATIVE, CORPORATION, LIMITED_LIABILITY_CORPORATION, NON_PROFIT_CORPORATION or PARTNERSHIP) and tollFree.industry (AGRICULTURE, AUTOMOTIVE, BANKING, CONSTRUCTION, CONSUMER, EDUCATION, ELECTRONICS, ENGINEERING, ENERGY, FAST_MOVING_CONSUMER_GOODS, FINANCIAL, FINTECH, FOOD_AND_BEVERAGE, GOVERNMENT, HEALTHCARE, HOSPITALITY, INSURANCE, JEWELRY, LEGAL, MANUFACTURING, MEDIA, NOT_FOR_PROFIT, OIL_AND_GAS, ONLINE, PROFESSIONAL_SERVICES, RAW_MATERIALS, REAL_ESTATE, RELIGION, RETAIL, TECHNOLOGY, TELECOMMUNICATIONS, TRANSPORTATION or TRAVEL), and for the contact named by firstName and lastName, tollFree.contactEmail (a valid email, at most 100 characters), tollFree.contactJobTitle (1 to 100 characters) and tollFree.contactJobLevel (DIRECTOR, GM, VP, CEO, CFO, GENERAL_COUNSEL or OTHER); its tollFree.countryCode must be "US" or "CA" and its state a 2-letter state or province code. Any other group gets 400 if it sends tollFree.businessStructure, industry, contactEmail, contactJobTitle or contactJobLevel.</param>
     /// <param name="options">Optional per-request overrides.</param>
     public async Task<SignalHouseResponse> CreateTollFreeBrandAsync(Dictionary<string, object> brandData, RequestOptions? options = null)
     {
@@ -90,74 +101,21 @@ public sealed class BrandsDomain
     }
 
     /// <summary>
-    /// List a group's business verifications, newest first, or one subgroup's when the group verifies each subgroup's
-    /// business separately, and whether the group's toll-free brands need one. Returns { groupId, subgroupId, required,
-    /// businessVerifications }, with subgroupId only when they belong to one subgroup. Each business verification carries
-    /// businessVerificationId, groupId, subgroupId (only when set), status (SUBMITTING, IN_REVIEW, VERIFIED or
-    /// NEEDS_CHANGES), details, submittedAt, reviewedAt and rejectionReason.
+    /// Get whether a group's new toll-free brands are reviewed when they're submitted, which decides what they need.
+    /// Returns { groupId, reviewsBusinessOnSubmit }. When reviewsBusinessOnSubmit is true, a new toll-free brand needs
+    /// tollFree's businessStructure, industry, contactEmail, contactJobTitle and contactJobLevel, a tollFree.countryCode of
+    /// "US" or "CA" and a 2-letter state or province code as its state; it stays DCA_PENDING until it's reviewed, and its
+    /// business details can't be changed after it's submitted. When it is false, tollFree's businessStructure, industry,
+    /// contactEmail, contactJobTitle and contactJobLevel are refused (400).
     /// </summary>
-    /// <param name="groupId">The group ID.</param>
-    /// <param name="subgroupId">The subgroup whose business verifications to list, sent as a query parameter only when given. Required for a group that verifies each subgroup's business separately; in any other group it must belong to the group and is otherwise ignored.</param>
+    /// <param name="groupId">The group ID (any group the caller can view).</param>
     /// <param name="options">Optional per-request overrides.</param>
-    public async Task<SignalHouseResponse> GetBusinessVerificationsAsync(string groupId, string? subgroupId = null, RequestOptions? options = null)
+    public async Task<SignalHouseResponse> GetTollFreeRequirementsAsync(string groupId, RequestOptions? options = null)
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId } });
 
         var safeGroupId = Uri.EscapeDataString(groupId);
-        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?> { { "subgroupId", subgroupId } });
-        return await _client.RequestAsync($"/brand/business-verification/{safeGroupId}{qs}", HttpMethod.Get, options: options);
-    }
-
-    /// <summary>
-    /// Get one of a group's business verifications by its ID: the business verification, as
-    /// <see cref="GetBusinessVerificationsAsync"/> lists it, plus required. 404 when it isn't one of the group's.
-    /// </summary>
-    /// <param name="groupId">The group ID.</param>
-    /// <param name="businessVerificationId">The ID of the business verification to get (starts with BV).</param>
-    /// <param name="options">Optional per-request overrides.</param>
-    public async Task<SignalHouseResponse> GetBusinessVerificationAsync(string groupId, string businessVerificationId, RequestOptions? options = null)
-    {
-        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "businessVerificationId", businessVerificationId } });
-
-        var safeGroupId = Uri.EscapeDataString(groupId);
-        var safeBusinessVerificationId = Uri.EscapeDataString(businessVerificationId);
-        return await _client.RequestAsync($"/brand/business-verification/{safeGroupId}/{safeBusinessVerificationId}", HttpMethod.Get, options: options);
-    }
-
-    /// <summary>
-    /// Create and submit a new business verification for a group, or for one subgroup when the group verifies each
-    /// subgroup's business separately. Review usually takes 1–2 business days; once it is VERIFIED, a new toll-free brand
-    /// can use it as tollFree.businessVerificationId. Returns 202 with the business verification, status SUBMITTING.
-    /// </summary>
-    /// <param name="groupId">The group ID (the caller's active group).</param>
-    /// <param name="details">The business verification: businessName, businessType, industry, registrationType, registrationNumber, website, street, street2 (optional), city, state, postalCode, country ("US" or "CA") and a representative object (firstName, lastName, email, phone in E.164, jobTitle, jobLevel). See API docs for the allowed values.</param>
-    /// <param name="subgroupId">The subgroup whose business it verifies, sent as a query parameter only when given. Required for a group that verifies each subgroup's business separately; in any other group it must belong to the group and is otherwise ignored. The subgroup must be active.</param>
-    /// <param name="options">Optional per-request overrides.</param>
-    public async Task<SignalHouseResponse> CreateBusinessVerificationAsync(string groupId, Dictionary<string, object> details, string? subgroupId = null, RequestOptions? options = null)
-    {
-        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "details", details } });
-
-        var safeGroupId = Uri.EscapeDataString(groupId);
-        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?> { { "subgroupId", subgroupId } });
-        return await _client.RequestAsync($"/brand/business-verification/{safeGroupId}{qs}", HttpMethod.Post, details, options);
-    }
-
-    /// <summary>
-    /// Correct and resubmit a business verification. Allowed only while its status is NEEDS_CHANGES (400 otherwise).
-    /// Review usually takes 1–2 business days; the toll-free brands that use it stay pending until it is verified.
-    /// Returns 202 with the business verification, status SUBMITTING.
-    /// </summary>
-    /// <param name="groupId">The group ID (the caller's active group).</param>
-    /// <param name="businessVerificationId">The ID of the business verification to update (starts with BV).</param>
-    /// <param name="details">The corrected business verification, with the same fields as <see cref="CreateBusinessVerificationAsync"/>.</param>
-    /// <param name="options">Optional per-request overrides.</param>
-    public async Task<SignalHouseResponse> UpdateBusinessVerificationAsync(string groupId, string businessVerificationId, Dictionary<string, object> details, RequestOptions? options = null)
-    {
-        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "businessVerificationId", businessVerificationId }, { "details", details } });
-
-        var safeGroupId = Uri.EscapeDataString(groupId);
-        var safeBusinessVerificationId = Uri.EscapeDataString(businessVerificationId);
-        return await _client.RequestAsync($"/brand/business-verification/{safeGroupId}/{safeBusinessVerificationId}", HttpMethod.Put, details, options);
+        return await _client.RequestAsync($"/brand/toll-free-requirements/{safeGroupId}", HttpMethod.Get, options: options);
     }
 
     /// <summary>

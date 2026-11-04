@@ -146,13 +146,14 @@ Every method returns a `SignalHouseResponse`:
 |-----------------|------------------------|---------|
 | `Auth`          | `AuthDomain`           | 3       |
 | `Billing`       | `BillingDomain`        | 9       |
-| `Brands`        | `BrandsDomain`         | 19      |
+| `Brands`        | `BrandsDomain`         | 16      |
 | `Campaigns`     | `CampaignsDomain`      | 4 + 2 admin |
 | `Groups`        | `GroupsDomain`         | 2 + 3 admin |
 | `Landings`      | `LandingsDomain`       | 6       |
 | `Messages`      | `MessagesDomain`       | 5       |
 | `Notifications` | `NotificationsDomain`  | 3       |
 | `Numbers`       | `NumbersDomain`        | 11      |
+| `Rcs.Agents`    | `RcsAgentsDomain`      | 8       |
 | `Shortlinks`    | `ShortlinksDomain`     | 2       |
 | `Subgroups`     | `SubgroupsDomain`      | 4       |
 | `Subscriptions` | `SubscriptionsDomain`  | 3 + 5 admin |

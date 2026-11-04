@@ -213,6 +213,23 @@ public sealed class TemplatesDomain
     }
 
     /// <summary>
+    /// Resolve an address to coordinates for a VIEW_LOCATION suggestion: {address, latitude, longitude, partialMatch}.
+    /// 400 LOCATION_NOT_FOUND when nothing matches; 429 past the group's lookup window; 503 when the server has no geocoding provider.
+    /// </summary>
+    /// <param name="groupId">The calling group.</param>
+    /// <param name="address">The address to resolve (1-512 characters).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The best match.</returns>
+    public async Task<SignalHouseResponse> GeocodeAddressAsync(
+        string groupId,
+        string address,
+        RequestOptions? options = null)
+    {
+        var qs = TemplateRequests.GeocodeQuery(groupId, address);
+        return await _client.RequestAsync($"/template/geocode{qs}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
     /// Upload one template media file (multipart fields file + groupId). Returns the MediaAsset with its public URL (HTTP 201).
     /// </summary>
     /// <param name="groupId">The owning group.</param>
@@ -415,6 +432,20 @@ internal static class TemplateRequests
             { "groupId", groupId },
             { "channel", channel },
             { "provider", provider },
+        });
+    }
+
+    /// <summary>
+    /// Build the address lookup query string.
+    /// </summary>
+    /// <exception cref="ValidationException">groupId or address is null.</exception>
+    internal static string GeocodeQuery(string groupId, string address)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "address", address } });
+        return HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "groupId", groupId },
+            { "address", address },
         });
     }
 

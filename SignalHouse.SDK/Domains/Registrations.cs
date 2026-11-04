@@ -200,6 +200,8 @@ public sealed class RegistrationsDomain
     /// <param name="page">Page number.</param>
     /// <param name="limit">Items per page (max 100).</param>
     /// <param name="options">Additional request options.</param>
+    /// <param name="brandId">RCS agents only: optional filter to agents linked to this 10DLC brand (carrier ID, provisional UUID or _id).</param>
+    /// <param name="campaignId">RCS agents only: optional filter to agents linked to this 10DLC campaign (campaign ID or _id).</param>
     /// <returns>The registrations.</returns>
     public async Task<SignalHouseResponse> GetRegistrationsAsync(
         string? groupId = null,
@@ -214,7 +216,9 @@ public sealed class RegistrationsDomain
         string? sortOrder = null,
         int? page = null,
         int? limit = null,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        string? brandId = null,
+        string? campaignId = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -226,6 +230,8 @@ public sealed class RegistrationsDomain
             { "status", status },
             { "parentRegistrationId", parentRegistrationId },
             { "phoneNumber", phoneNumber },
+            { "brandId", brandId },
+            { "campaignId", campaignId },
             { "sortBy", sortBy },
             { "sortOrder", sortOrder },
             { "page", page?.ToString() },
@@ -252,8 +258,85 @@ public sealed class RegistrationsDomain
     }
 
     /// <summary>
+    /// Edit a draft, or a registration Signal House rejected, before submitting it (types that keep drafts, such as
+    /// RCS_AGENT). data is a partial of the type's create fields: for RCS_AGENT agent and consent merge field by field,
+    /// every other key replaces, and campaignId: null unlinks the campaign. 409 once submitted.
+    /// </summary>
+    /// <param name="registrationId">The registration ID (e.g. RCSA7K2M1QZ8RP).</param>
+    /// <param name="data">The fields to change.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The updated registration.</returns>
+    public async Task<SignalHouseResponse> UpdateRegistrationAsync(
+        string registrationId,
+        Dictionary<string, object?> data,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "registrationId", registrationId }, { "data", data } });
+
+        var safeRegistrationId = Uri.EscapeDataString(registrationId);
+        return await _client.RequestAsync($"/registration/{safeRegistrationId}", HttpMethod.Put, data, options);
+    }
+
+    /// <summary>
+    /// Check a draft against every submit requirement and the live state of its links, without writing. Returns
+    /// { valid, errors: [{ field, reason }], warnings: [{ field, reason }] }.
+    /// </summary>
+    /// <param name="registrationId">The registration ID (e.g. RCSA7K2M1QZ8RP).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The validation result.</returns>
+    public async Task<SignalHouseResponse> ValidateRegistrationAsync(
+        string registrationId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "registrationId", registrationId } });
+
+        var safeRegistrationId = Uri.EscapeDataString(registrationId);
+        return await _client.RequestAsync($"/registration/{safeRegistrationId}/validate", HttpMethod.Post, options: options);
+    }
+
+    /// <summary>
+    /// Submit a draft. A type Signal House reviews goes to SIGNAL_HOUSE_REVIEW; a type it does not (RCS_AGENT) goes to
+    /// SUBMITTING and is filed with the provider at once. A draft that fails a requirement gets a 400 whose details
+    /// carry { code: "REGISTRATION_INCOMPLETE", errors, warnings }; a second submit, or one of a registration the
+    /// provider already holds, gets a 409.
+    /// </summary>
+    /// <param name="registrationId">The registration ID (e.g. RCSA7K2M1QZ8RP).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The registration, now SIGNAL_HOUSE_REVIEW or SUBMITTING.</returns>
+    public async Task<SignalHouseResponse> SubmitRegistrationAsync(
+        string registrationId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "registrationId", registrationId } });
+
+        var safeRegistrationId = Uri.EscapeDataString(registrationId);
+        return await _client.RequestAsync($"/registration/{safeRegistrationId}/submit", HttpMethod.Post, options: options);
+    }
+
+    /// <summary>
+    /// Request the launch of a registration the provider already holds (an RCS agent in testing): the launch
+    /// requirements are checked and the registration goes to SIGNAL_HOUSE_REVIEW, whose approval files the provider's
+    /// launch request. Allowed while the provider reports the agent ready for testing, after a Signal House rejection,
+    /// or after every carrier refused an earlier launch (409 otherwise); a failed requirement is a 400 whose details
+    /// carry { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
+    /// </summary>
+    /// <param name="registrationId">The registration ID (e.g. RCSA7K2M1QZ8RP).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The registration, now SIGNAL_HOUSE_REVIEW.</returns>
+    public async Task<SignalHouseResponse> LaunchRegistrationAsync(
+        string registrationId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "registrationId", registrationId } });
+
+        var safeRegistrationId = Uri.EscapeDataString(registrationId);
+        return await _client.RequestAsync($"/registration/{safeRegistrationId}/launch", HttpMethod.Post, options: options);
+    }
+
+    /// <summary>
     /// Cancel a registration. Allowed from SIGNAL_HOUSE_REVIEW, SIGNAL_HOUSE_APPROVED, PENDING_PROVIDER, NEEDS_INFORMATION,
-    /// PAYMENT_REQUIRED and APPROVED (409 otherwise). Numbers already allocated stay on the account and stop sending.
+    /// PAYMENT_REQUIRED and APPROVED (409 otherwise), and for types that keep drafts also from DRAFT and
+    /// SIGNAL_HOUSE_REJECTED. Numbers already allocated stay on the account and stop sending.
     /// </summary>
     /// <param name="registrationId">The registration ID.</param>
     /// <param name="options">Additional request options.</param>

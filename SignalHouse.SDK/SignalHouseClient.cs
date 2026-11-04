@@ -39,6 +39,9 @@ public class SignalHouseClient
     /// <summary>Staff-only onboarding data (KYC, account owner, CRM, products).</summary>
     public OnboardingDomain Onboarding { get; }
 
+    /// <summary>RCS (Google RBM) resources: agents on /rcs/agent.</summary>
+    public RcsDomain Rcs { get; }
+
     /// <summary>Sender registrations: the catalog, quotes, submission, status tracking and staff review for every jurisdiction.</summary>
     public RegistrationsDomain Registrations { get; }
 
@@ -105,6 +108,7 @@ public class SignalHouseClient
         Notifications = new NotificationsDomain(client);
         Numbers = new NumbersDomain(client, enableAdmin);
         Onboarding = new OnboardingDomain(client, enableAdmin);
+        Rcs = new RcsDomain(client);
         Registrations = new RegistrationsDomain(client, enableAdmin);
         Shortlinks = new ShortlinksDomain(client);
         Subgroups = new SubgroupsDomain(client);
