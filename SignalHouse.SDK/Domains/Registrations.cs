@@ -200,8 +200,8 @@ public sealed class RegistrationsDomain
     /// <param name="page">Page number.</param>
     /// <param name="limit">Items per page (max 100).</param>
     /// <param name="options">Additional request options.</param>
-    /// <param name="brandId">RCS agents only: optional filter to agents linked to this 10DLC brand (carrier ID, provisional UUID or _id).</param>
-    /// <param name="campaignId">RCS agents only: optional filter to agents linked to this 10DLC campaign (campaign ID or _id).</param>
+    /// <param name="brandId">RCS agents only: optional filter to agents linked to this brand (carrier ID, provisional UUID or _id).</param>
+    /// <param name="campaignId">RCS agents only: optional filter to agents linked to this campaign (campaign ID or _id).</param>
     /// <returns>The registrations.</returns>
     public async Task<SignalHouseResponse> GetRegistrationsAsync(
         string? groupId = null,
@@ -319,6 +319,7 @@ public sealed class RegistrationsDomain
     /// launch request. Allowed while the provider reports the agent ready for testing, after a Signal House rejection,
     /// or after every carrier refused an earlier launch (409 otherwise); a failed requirement is a 400 whose details
     /// carry { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
+    /// An RCS agent's launch request charges its launch fees: a wallet that cannot cover them gets a 402, and nothing changes.
     /// </summary>
     /// <param name="registrationId">The registration ID (e.g. RCSA7K2M1QZ8RP).</param>
     /// <param name="options">Additional request options.</param>

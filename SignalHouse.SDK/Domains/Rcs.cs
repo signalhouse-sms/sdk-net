@@ -8,6 +8,7 @@ namespace SignalHouse.SDK.Domains;
 /// RCS (Google RBM) resources. Templates for RCS live under <c>client.Templates</c>.
 /// <list type="bullet">
 ///   <item><c>client.Rcs.Agents</c> — RCS agents under /rcs/agent.</item>
+///   <item><c>client.Rcs.Messages</c> — RCS messages: send, validate, estimate, capabilities, get and list.</item>
 /// </list>
 /// </summary>
 public sealed class RcsDomain
@@ -15,18 +16,22 @@ public sealed class RcsDomain
     /// <summary>RCS agents under /rcs/agent.</summary>
     public RcsAgentsDomain Agents { get; }
 
+    /// <summary>RCS messages: send, validate, estimate, capabilities, get and list.</summary>
+    public RcsMessagesDomain Messages { get; }
+
     internal RcsDomain(HttpClientWrapper client)
     {
         Agents = new RcsAgentsDomain(client);
+        Messages = new RcsMessagesDomain(client);
     }
 }
 
 /// <summary>
-/// RCS agents under /rcs/agent. An agent links one 10DLC brand and one 10DLC campaign: the campaign's numbers are the
-/// SMS fallback, and the brand and campaign supply the company identity and consent text for the carrier launch. One
-/// brand or campaign can serve many agents. An agent is a registration (type RCS_AGENT, id RCSA…), so the
-/// Registrations methods read and edit the same record. 404 while the environment's RCS switch is off; 400 while the
-/// group's rcsEnabled flag is off.
+/// RCS agents under /rcs/agent. An agent links one brand and one campaign, of any registration type: the campaign's
+/// numbers are the SMS fallback, and the brand and campaign supply the company identity and consent text for the
+/// carrier launch. One brand or campaign can serve many agents. An agent is a registration (type RCS_AGENT, id RCSA…),
+/// so the Registrations methods read and edit the same record. 404 while the environment's RCS switch is off; 400 while
+/// the group's rcsEnabled flag is off.
 /// </summary>
 public sealed class RcsAgentsDomain
 {
@@ -38,12 +43,12 @@ public sealed class RcsAgentsDomain
     }
 
     /// <summary>
-    /// Create an agent draft on a 10DLC brand, optionally with its campaign (HTTP 201, status DRAFT). The agent's
+    /// Create an agent draft on a brand, optionally with its campaign (HTTP 201, status DRAFT). The agent's
     /// subgroup is the brand's. Blank consent fields fill from the linked campaign. Set RequestOptions.IdempotencyKey
     /// to make a retry safe.
     /// </summary>
-    /// <param name="brandId">The 10DLC brand: carrier brand ID, provisional UUID or _id.</param>
-    /// <param name="campaignId">Optional 10DLC campaign of that brand (campaign ID or _id); required before submit.</param>
+    /// <param name="brandId">The brand: carrier brand ID, provisional UUID or _id.</param>
+    /// <param name="campaignId">Optional campaign of that brand (campaign ID or _id); required before submit.</param>
     /// <param name="agent">Optional profile { name, description, color, logoUrl, heroUrl, phone, website, email, phoneLabel, websiteLabel, emailLabel (captions, max 40; submit defaults them to Call, Website and Email), privacyPolicyUrl, termsUrl } (a Dictionary, JsonElement or JsonNode).</param>
     /// <param name="consent">Optional launch text { optInDetails, optInUrl, optInResponse, optOutDetails, optOutResponse, helpResponse, campaignDescription, messageExamples, estimatedMonthlyVolume, launchVideoUrl }; every field is required before the launch request.</param>
     /// <param name="contact">Optional launch contact { firstName, lastName, role, email, mobile }: the individual at the brand the carrier partner's reviewers may write to; required in full before the launch request.</param>
@@ -80,8 +85,8 @@ public sealed class RcsAgentsDomain
     /// <param name="groupId">Optional group ID filter.</param>
     /// <param name="subgroupId">Optional subgroup ID filter.</param>
     /// <param name="status">Optional status or comma-separated list from DRAFT, PENDING_REVIEW, REJECTED, AGENT_CREATING and ARCHIVED.</param>
-    /// <param name="brandId">Optional: agents linked to this 10DLC brand (carrier brand ID, provisional UUID or _id).</param>
-    /// <param name="campaignId">Optional: agents linked to this 10DLC campaign (campaign ID or _id).</param>
+    /// <param name="brandId">Optional: agents linked to this brand (carrier brand ID, provisional UUID or _id).</param>
+    /// <param name="campaignId">Optional: agents linked to this campaign (campaign ID or _id).</param>
     /// <param name="page">Page number (default 1).</param>
     /// <param name="limit">Agents per page (default 25, max 100).</param>
     /// <param name="options">Additional request options.</param>
@@ -130,7 +135,7 @@ public sealed class RcsAgentsDomain
     /// agent exists at the partner and billingCategory once a launch was requested.
     /// </summary>
     /// <param name="agentId">The agent ID.</param>
-    /// <param name="brandId">Optional: relink to another 10DLC brand of the same subgroup.</param>
+    /// <param name="brandId">Optional: relink to another brand of the same subgroup.</param>
     /// <param name="campaignId">Optional: link or relink the campaign.</param>
     /// <param name="unlinkCampaign">Send campaignId: null to unlink the campaign (overrides campaignId).</param>
     /// <param name="agent">Optional profile fields to change.</param>
@@ -206,6 +211,7 @@ public sealed class RcsAgentsDomain
     /// CARRIER_REJECTED (409 otherwise); a failed requirement is a 400 whose details carry
     /// { code: "REGISTRATION_INCOMPLETE", errors, warnings }. Sends POST /registration/:agentId/launch: the agent is a
     /// registration.
+    /// The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. The agent's launchFees quotes what the next request charges.
     /// </summary>
     /// <param name="agentId">The agent ID.</param>
     /// <param name="options">Additional request options.</param>
@@ -273,6 +279,298 @@ public sealed class RcsAgentsDomain
 
         var content = RcsAgentRequests.AssetContent(kind, file, fileName);
         return await _client.MultipartRequestAsync($"{RcsAgentRequests.AgentPath(agentId)}/asset", HttpMethod.Post, content, options);
+    }
+}
+
+/// <summary>
+/// RCS messages. Sends go through an agent to POST /message/rcs. A message is a Message record (messageType RCS), so
+/// the Messages methods read the same record. 404 while the environment's RCS switch is off; 403 while the group's
+/// rcsEnabled flag is off; 409 while the agent cannot send yet.
+/// </summary>
+public sealed class RcsMessagesDomain
+{
+    private readonly HttpClientWrapper _client;
+
+    internal RcsMessagesDomain(HttpClientWrapper client)
+    {
+        _client = client;
+    }
+
+    /// <summary>
+    /// Send an RCS message to up to 100 recipients (HTTP 201). A check that blocks one recipient writes a BLOCKED
+    /// message for it and the rest still send. Set RequestOptions.IdempotencyKey to make a retry safe.
+    /// </summary>
+    /// <param name="agentId">The agent that sends (RCSA…).</param>
+    /// <param name="recipients">Up to 100 recipients, each { phoneNumber, variables?, clientMessageId?, metadata? } (a list of Dictionary, JsonElement or JsonNode).</param>
+    /// <param name="templateId">A template to send; exactly one of templateId or content.</param>
+    /// <param name="templateVersion">A published version of templateId; needs templateId.</param>
+    /// <param name="content">Inline content (a Dictionary, JsonElement or JsonNode); exactly one of templateId or content.</param>
+    /// <param name="contentFormat">content.v1 (default) or google.rcs.</param>
+    /// <param name="trafficType">AUTHENTICATION, TRANSACTION, SERVICEREQUEST, ACKNOWLEDGEMENT or PROMOTION; required on a MULTI_USE agent when the template sets none.</param>
+    /// <param name="ttlSeconds">Seconds the RCS message may wait for delivery; at most one of ttlSeconds or expireTime.</param>
+    /// <param name="expireTime">ISO-8601 time the RCS message expires.</param>
+    /// <param name="fallback">{ mode? (auto, rcs_only, sms_only), channel? (auto, sms, mms), from?, content?: { text, mediaUrls? }, validitySeconds? }. from is a Ready number on the agent's linked Active campaign. If content is omitted the template's fallback, else a generated one, is used.</param>
+    /// <param name="statusCallbackUrl">URL that receives this message's status events.</param>
+    /// <param name="enableShortlink">Shorten the links in the message.</param>
+    /// <param name="isTest">Send as a test; approved testers only.</param>
+    /// <param name="simulate">not_capable, ttl_expired, delivered or read; approved testers only.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>{ requested, enqueued, failed, bulkId, messages }. A blocked row carries blockReason, reason and issues; an archived template answers 409 TEMPLATE_ARCHIVED.</returns>
+    /// <exception cref="ValidationException">agentId or recipients is null.</exception>
+    public async Task<SignalHouseResponse> SendAsync(
+        string agentId,
+        object recipients,
+        string? templateId = null,
+        int? templateVersion = null,
+        object? content = null,
+        string? contentFormat = null,
+        string? trafficType = null,
+        int? ttlSeconds = null,
+        string? expireTime = null,
+        object? fallback = null,
+        string? statusCallbackUrl = null,
+        bool? enableShortlink = null,
+        bool? isTest = null,
+        string? simulate = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId }, { "recipients", recipients } });
+
+        var payload = RcsMessageRequests.Body(new Dictionary<string, object?>
+        {
+            { "agentId", agentId },
+            { "recipients", recipients },
+            { "templateId", templateId },
+            { "templateVersion", templateVersion },
+            { "content", content },
+            { "contentFormat", contentFormat },
+            { "trafficType", trafficType },
+            { "ttlSeconds", ttlSeconds },
+            { "expireTime", expireTime },
+            { "fallback", fallback },
+            { "statusCallbackUrl", statusCallbackUrl },
+            { "enableShortlink", enableShortlink },
+            { "isTest", isTest },
+            { "simulate", simulate },
+        });
+        return await _client.RequestAsync("/message/rcs", HttpMethod.Post, payload, options);
+    }
+
+    /// <summary>
+    /// Check a send without writing anything. Takes the same arguments as SendAsync.
+    /// </summary>
+    /// <param name="agentId">The agent that sends (RCSA…).</param>
+    /// <param name="recipients">Up to 100 recipients, each { phoneNumber, variables?, clientMessageId?, metadata? } (a list of Dictionary, JsonElement or JsonNode).</param>
+    /// <param name="templateId">A template to send; exactly one of templateId or content.</param>
+    /// <param name="templateVersion">A published version of templateId; needs templateId.</param>
+    /// <param name="content">Inline content (a Dictionary, JsonElement or JsonNode); exactly one of templateId or content.</param>
+    /// <param name="contentFormat">content.v1 (default) or google.rcs.</param>
+    /// <param name="trafficType">AUTHENTICATION, TRANSACTION, SERVICEREQUEST, ACKNOWLEDGEMENT or PROMOTION; required on a MULTI_USE agent when the template sets none.</param>
+    /// <param name="ttlSeconds">Seconds the RCS message may wait for delivery; at most one of ttlSeconds or expireTime.</param>
+    /// <param name="expireTime">ISO-8601 time the RCS message expires.</param>
+    /// <param name="fallback">{ mode? (auto, rcs_only, sms_only), channel? (auto, sms, mms), from?, content?: { text, mediaUrls? }, validitySeconds? }. from is a Ready number on the agent's linked Active campaign. If content is omitted the template's fallback, else a generated one, is used.</param>
+    /// <param name="statusCallbackUrl">URL that receives this message's status events.</param>
+    /// <param name="enableShortlink">Shorten the links in the message.</param>
+    /// <param name="isTest">Send as a test; approved testers only.</param>
+    /// <param name="simulate">not_capable, ttl_expired, delivered or read; approved testers only.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>{ valid, errors, warnings, billingClass, segments, estimatedCostMicros, unsupportedFiles, recipients }. valid is true only with no errors; each blocked recipient adds an error and carries blockReason, reason and issues.</returns>
+    /// <exception cref="ValidationException">agentId or recipients is null.</exception>
+    public async Task<SignalHouseResponse> ValidateAsync(
+        string agentId,
+        object recipients,
+        string? templateId = null,
+        int? templateVersion = null,
+        object? content = null,
+        string? contentFormat = null,
+        string? trafficType = null,
+        int? ttlSeconds = null,
+        string? expireTime = null,
+        object? fallback = null,
+        string? statusCallbackUrl = null,
+        bool? enableShortlink = null,
+        bool? isTest = null,
+        string? simulate = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId }, { "recipients", recipients } });
+
+        var payload = RcsMessageRequests.Body(new Dictionary<string, object?>
+        {
+            { "agentId", agentId },
+            { "recipients", recipients },
+            { "templateId", templateId },
+            { "templateVersion", templateVersion },
+            { "content", content },
+            { "contentFormat", contentFormat },
+            { "trafficType", trafficType },
+            { "ttlSeconds", ttlSeconds },
+            { "expireTime", expireTime },
+            { "fallback", fallback },
+            { "statusCallbackUrl", statusCallbackUrl },
+            { "enableShortlink", enableShortlink },
+            { "isTest", isTest },
+            { "simulate", simulate },
+        });
+        return await _client.RequestAsync("/message/rcs/validate", HttpMethod.Post, payload, options);
+    }
+
+    /// <summary>
+    /// Price an RCS draft in microdollars; no charge or send. Sends POST /message/estimate with channel "rcs".
+    /// </summary>
+    /// <param name="agentId">The agent that would send (RCSA…).</param>
+    /// <param name="recipients">Named recipients; exactly one of recipients or recipientCount.</param>
+    /// <param name="recipientCount">A recipient count; carriers are unknown, so the default fees apply.</param>
+    /// <param name="templateId">A template to price; exactly one of templateId or content.</param>
+    /// <param name="templateVersion">A published version of templateId; needs templateId.</param>
+    /// <param name="content">Inline content; exactly one of templateId or content.</param>
+    /// <param name="contentFormat">content.v1 (default) or google.rcs.</param>
+    /// <param name="trafficType">As on SendAsync.</param>
+    /// <param name="ttlSeconds">Seconds the RCS message may wait for delivery; at most one of ttlSeconds or expireTime.</param>
+    /// <param name="expireTime">ISO-8601 time the RCS message expires.</param>
+    /// <param name="fallback">As on SendAsync, but its from is optional here; with none, the leg is priced on the channel of the agent's linked campaign.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>{ billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB, already inside rcsLeg.cost; a message over 100 MB adds a MEDIA_TOO_LARGE issue.</returns>
+    /// <exception cref="ValidationException">agentId is null.</exception>
+    public async Task<SignalHouseResponse> EstimateAsync(
+        string agentId,
+        object? recipients = null,
+        int? recipientCount = null,
+        string? templateId = null,
+        int? templateVersion = null,
+        object? content = null,
+        string? contentFormat = null,
+        string? trafficType = null,
+        int? ttlSeconds = null,
+        string? expireTime = null,
+        object? fallback = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId } });
+
+        var payload = RcsMessageRequests.Body(new Dictionary<string, object?>
+        {
+            { "channel", "rcs" },
+            { "agentId", agentId },
+            { "recipients", recipients },
+            { "recipientCount", recipientCount },
+            { "templateId", templateId },
+            { "templateVersion", templateVersion },
+            { "content", content },
+            { "contentFormat", contentFormat },
+            { "trafficType", trafficType },
+            { "ttlSeconds", ttlSeconds },
+            { "expireTime", expireTime },
+            { "fallback", fallback },
+        });
+        return await _client.RequestAsync("/message/estimate", HttpMethod.Post, payload, options);
+    }
+
+    /// <summary>
+    /// Report which numbers can receive RCS from an agent.
+    /// </summary>
+    /// <param name="agentId">The agent (RCSA…).</param>
+    /// <param name="phoneNumbers">Up to 500 numbers, 10-15 digits, with or without the +.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>{ results: [{ phoneNumber, capability }] }, capability being ENABLED, UNREACHABLE or UNKNOWN.</returns>
+    /// <exception cref="ValidationException">agentId or phoneNumbers is null.</exception>
+    public async Task<SignalHouseResponse> CapabilitiesAsync(
+        string agentId,
+        IEnumerable<string> phoneNumbers,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId }, { "phoneNumbers", phoneNumbers } });
+        return await _client.RequestAsync("/rcs/capabilities", HttpMethod.Post, new { agentId, phoneNumbers }, options);
+    }
+
+    /// <summary>
+    /// Get one message by its ID. The same route as <c>client.Messages.GetMessageAsync</c>.
+    /// </summary>
+    /// <param name="messageId">The message ID.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The message; an unknown ID is a 404.</returns>
+    /// <exception cref="ValidationException">messageId is null.</exception>
+    public async Task<SignalHouseResponse> GetAsync(
+        string messageId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "messageId", messageId } });
+        return await _client.RequestAsync($"/message/{Uri.EscapeDataString(messageId)}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
+    /// List RCS messages. Sends GET /message with messageType RCS. A fallback leg is an SMS or MMS message: read it with
+    /// <c>client.Messages.GetMessageAsync</c> and the parent's fallbackMessageId.
+    /// </summary>
+    /// <param name="groupId">The group whose messages to list.</param>
+    /// <param name="from">ISO-8601 date or timestamp; sent as startDate.</param>
+    /// <param name="to">ISO-8601 date or timestamp; sent as endDate.</param>
+    /// <param name="agentId">Messages this agent sent; sent as registrationId.</param>
+    /// <param name="status">ENQUEUED, DEQUEUED, SENT, FAILED, DELIVERED, READ, EXPIRED, FALLBACK or BLOCKED.</param>
+    /// <param name="page">Page number.</param>
+    /// <param name="limit">Messages per page.</param>
+    /// <param name="templateId">Messages sent from this template.</param>
+    /// <param name="templateVersion">Messages sent from this template version.</param>
+    /// <param name="bulkId">The messages of one send.</param>
+    /// <param name="fallbackReason">NOT_CAPABLE, CARRIER_NOT_LAUNCHED, TTL_EXPIRED, RCS_ERROR, PROVIDER_ERROR or SMS_ONLY.</param>
+    /// <param name="billingClass">RICH or RICH_MEDIA.</param>
+    /// <param name="deliveredChannel">The channel that delivered the message: rcs, sms or mms.</param>
+    /// <param name="isTest">true for test messages only, false to leave them out.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The messages.</returns>
+    /// <exception cref="ValidationException">groupId, from or to is null.</exception>
+    public async Task<SignalHouseResponse> ListAsync(
+        string groupId,
+        string from,
+        string to,
+        string? agentId = null,
+        string? status = null,
+        int? page = null,
+        int? limit = null,
+        string? templateId = null,
+        int? templateVersion = null,
+        string? bulkId = null,
+        string? fallbackReason = null,
+        string? billingClass = null,
+        string? deliveredChannel = null,
+        bool? isTest = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "groupId", groupId }, { "from", from }, { "to", to } });
+
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "registrationId", agentId },
+            { "startDate", from },
+            { "endDate", to },
+            { "groupId", groupId },
+            { "status", status },
+            { "page", page?.ToString() },
+            { "limit", limit?.ToString() },
+            { "templateId", templateId },
+            { "templateVersion", templateVersion?.ToString() },
+            { "bulkId", bulkId },
+            { "fallbackReason", fallbackReason },
+            { "billingClass", billingClass },
+            { "deliveredChannel", deliveredChannel },
+            { "isTest", isTest?.ToString().ToLowerInvariant() },
+            { "messageType", "RCS" },
+        });
+        return await _client.RequestAsync($"/message{qs}", HttpMethod.Get, options: options);
+    }
+}
+
+/// <summary>
+/// Request-building helpers for the RCS messages methods.
+/// </summary>
+internal static class RcsMessageRequests
+{
+    /// <summary>
+    /// Build a JSON body, leaving out the null fields.
+    /// </summary>
+    internal static Dictionary<string, object?> Body(Dictionary<string, object?> fields)
+    {
+        return fields.Where(field => field.Value is not null).ToDictionary(field => field.Key, field => field.Value);
     }
 }
 

@@ -19,7 +19,8 @@ public sealed class TemplatesDomain
     }
 
     /// <summary>
-    /// Create a template with draft version 1. Returns { head, version } (HTTP 201).
+    /// Create a template with draft version 1. Returns { head, version, validation } (HTTP 201). validation is
+    /// { valid, errors, warnings }, or null when the checks could not run; the draft saves even when it lists errors.
     /// </summary>
     /// <param name="groupId">The owning group.</param>
     /// <param name="name">1-120 characters, unique per group and channel.</param>
@@ -99,7 +100,7 @@ public sealed class TemplatesDomain
     /// <param name="clearTag">Send tag: null to clear it.</param>
     /// <param name="body">Optional full replacement RcsTemplateBody, sent verbatim.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>The template head and draft version.</returns>
+    /// <returns>The template head, draft version and validation result; the draft saves even when validation lists errors.</returns>
     public async Task<SignalHouseResponse> UpdateAsync(
         string templateId,
         string groupId,
@@ -115,7 +116,7 @@ public sealed class TemplatesDomain
     }
 
     /// <summary>
-    /// Publish the current draft. Returns { head, version }. An incomplete draft is a 400 TEMPLATE_INVALID carrying errors
+    /// Publish the current draft. Returns { head, version, warnings }. An incomplete draft is a 400 TEMPLATE_INVALID carrying errors
     /// and warnings; no draft is a 409 NO_DRAFT; a draft that changed while it was being published is a 409 DRAFT_CHANGED
     /// (publish again).
     /// </summary>

@@ -154,6 +154,7 @@ Every method returns a `SignalHouseResponse`:
 | `Notifications` | `NotificationsDomain`  | 3       |
 | `Numbers`       | `NumbersDomain`        | 11      |
 | `Rcs.Agents`    | `RcsAgentsDomain`      | 8       |
+| `Rcs.Messages`  | `RcsMessagesDomain`    | 6       |
 | `Shortlinks`    | `ShortlinksDomain`     | 2       |
 | `Subgroups`     | `SubgroupsDomain`      | 4       |
 | `Subscriptions` | `SubscriptionsDomain`  | 3 + 5 admin |

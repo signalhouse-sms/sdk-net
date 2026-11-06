@@ -33,9 +33,10 @@ public sealed class MessagesDomain
     /// Inbound messages in the response also carry sentimentScore (-100..100, null when unscored),
     /// sentimentLabel ("positive", "neutral" or "negative", null when sentimentScore is null) and
     /// sentimentScoredAt. Outbound messages are never scored.
+    /// templateId through isTest are RCS filters and come last, so pass them by name.
     /// </summary>
     /// <param name="sortField">Field to sort by: createdAt, segmentCount, status, or sentimentScore.</param>
-    /// <param name="channel">Optional channel filter: tenDLC, virtualLongCode, tollFree, shortCode, or p2p (single value or comma-separated list). Filters on each message's stored channel; older messages without one count as tenDLC.</param>
+    /// <param name="channel">Optional channel filter: tenDLC, virtualLongCode, tollFree, shortCode, p2p, or rcs (single value or comma-separated list). Filters on each message's stored channel; older messages without one count as tenDLC.</param>
     /// <param name="sentimentLabel">Optional sentiment filter: positive, neutral, or negative (single value or comma-separated list). Applied as the sentimentScore range the label threshold produces, so unscored messages match no bucket and outbound messages are excluded.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
     /// <param name="errorCode">Optional Signal House error code filter for FAILED messages (single value or comma-separated list). "OUT" is the campaign opt-out, displayed as RECIPIENT_OPTED_OUT. Carrier codes are not filterable here; they live inside successOrFailureReason.</param>
@@ -44,6 +45,13 @@ public sealed class MessagesDomain
     /// <param name="senderPhoneNumber">Filter by sender phone number. A plain value is an exact match; a value containing % is a wildcard for a partial match (e.g. "%1234" matches numbers ending in 1234). 3-15 digits are required alongside any %.</param>
     /// <param name="recipientPhoneNumber">Filter by recipient phone number. A plain value is an exact match; a value containing % is a wildcard for a partial match (e.g. "%1234" matches numbers ending in 1234). 3-15 digits are required alongside any %.</param>
     /// <param name="registrationId">Filter to messages attributed to these registrations. Cannot be combined with campaignId; each id must belong to the group. Single value or comma-separated list.</param>
+    /// <param name="templateId">RCS messages sent from this template.</param>
+    /// <param name="templateVersion">RCS messages sent from this template version.</param>
+    /// <param name="bulkId">The RCS messages of one send.</param>
+    /// <param name="fallbackReason">Why an RCS message ran its fallback: NOT_CAPABLE, CARRIER_NOT_LAUNCHED, TTL_EXPIRED, RCS_ERROR, PROVIDER_ERROR or SMS_ONLY.</param>
+    /// <param name="billingClass">RCS billing class: RICH or RICH_MEDIA.</param>
+    /// <param name="deliveredChannel">The channel that delivered an RCS message: rcs, sms or mms.</param>
+    /// <param name="isTest">true for RCS test messages only, false to leave them out.</param>
     public async Task<SignalHouseResponse> GetMessagesAsync(
         string? id = null,
         string? campaignId = null,
@@ -70,7 +78,14 @@ public sealed class MessagesDomain
         string? errorCode = null,
         string? region = null,
         string? regionScopes = null,
-        string? registrationId = null)
+        string? registrationId = null,
+        string? templateId = null,
+        int? templateVersion = null,
+        string? bulkId = null,
+        string? fallbackReason = null,
+        string? billingClass = null,
+        string? deliveredChannel = null,
+        bool? isTest = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -99,6 +114,13 @@ public sealed class MessagesDomain
             { "page", page?.ToString() },
             { "limit", limit?.ToString() },
             { "dateBounds", dateBounds },
+            { "templateId", templateId },
+            { "templateVersion", templateVersion?.ToString() },
+            { "bulkId", bulkId },
+            { "fallbackReason", fallbackReason },
+            { "billingClass", billingClass },
+            { "deliveredChannel", deliveredChannel },
+            { "isTest", isTest?.ToString().ToLowerInvariant() },
         });
 
         return await _client.RequestAsync($"/message{qs}", HttpMethod.Get, options: options);
@@ -115,11 +137,11 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="channel">Optional channel filter: tenDLC, virtualLongCode, tollFree, shortCode, or p2p (single value or comma-separated list). Filters on the stored channel; a tenDLC selection also includes older messages with no channel, and p2p is matched by carrier.</param>
     /// <param name="messageType">Message type(s) the SENTIMENT figures are scoped to: SMS, MMS or P2P. Omit for all scored types. Does NOT narrow the message counts, which are always returned split per type.</param>
-    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400 -- omit the parameter unless it is wanted.</param>
+    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
-    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400.</param>
+    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list.</param>
     /// <param name="regionScopes">Optional JSON array of OR-ed branches, each {region, channels, brandId?, campaignId?, phoneNumber?} with channels from tenDLC, virtualLongCode, tollFree, shortCode, p2p. "[]" matches nothing. Same hourly-analytics gate as region.</param>
-    /// <param name="registrationId">Filter to traffic attributed to these registrations (hourly analytics only; a 400 while hourly reads are off). A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
+    /// <param name="registrationId">Filter to traffic attributed to these registrations. A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
     public async Task<SignalHouseResponse> GetAnalyticsAsync(
         string? groupId = null,
         string? subgroupId = null,
@@ -172,13 +194,13 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="channel">Optional channel filter: tenDLC, virtualLongCode, tollFree, shortCode, or p2p (single value or comma-separated list). Filters on the stored channel; a tenDLC selection also includes older messages with no channel, and p2p is a real channel here.</param>
     /// <param name="messageType">Message type(s) the SENTIMENT figures are scoped to: SMS, MMS or P2P. Omit for all scored types. Does NOT narrow the message counts, which are always returned split per type.</param>
-    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400 -- omit the parameter unless it is wanted.</param>
-    /// <param name="granularity">Time-bucket grain of the byDate rows: "day" or "hour". Null means day (each row's _id is a "YYYY-MM-DD" date). "hour" buckets by hour (each row's _id is a "YYYY-MM-DD HH:MM:SS" UTC hour; startDate is floored to its hour and endDate honoured as given) and is capped to a 7-day span. Only accepted where the environment serves hourly analytics; elsewhere any value, including "day", is rejected with a 400 -- leave it null unless hour grain is wanted.</param>
-    /// <param name="breakdown">"carrier" or "carrierFamily". Adds a byBreakdown time × dimension series to the response ({dimension, rows}: each row is one byDate bucket (_id) for one carrier or carrier family (key), top 50 keys by volume, excluding P2P) and caps the span at 31 days. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400 -- omit the parameter unless it is wanted.</param>
+    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list.</param>
+    /// <param name="granularity">Time-bucket grain of the byDate rows: "day" or "hour". Null means day (each row's _id is a "YYYY-MM-DD" date). "hour" buckets by hour (each row's _id is a "YYYY-MM-DD HH:MM:SS" UTC hour; startDate is floored to its hour and endDate honoured as given) and is capped to a 7-day span.</param>
+    /// <param name="breakdown">"carrier" or "carrierFamily". Adds a byBreakdown time × dimension series to the response ({dimension, rows}: each row is one byDate bucket (_id) for one carrier or carrier family (key), top 50 keys by volume, excluding P2P) and caps the span at 31 days.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
-    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400.</param>
+    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list.</param>
     /// <param name="regionScopes">Optional JSON array of OR-ed branches, each {region, channels, brandId?, campaignId?, phoneNumber?} with channels from tenDLC, virtualLongCode, tollFree, shortCode, p2p. "[]" matches nothing. Same hourly-analytics gate as region.</param>
-    /// <param name="registrationId">Filter to traffic attributed to these registrations (hourly analytics only; a 400 while hourly reads are off). A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
+    /// <param name="registrationId">Filter to traffic attributed to these registrations. A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
     public async Task<SignalHouseResponse> GetAnalyticsDetailAsync(
         string? groupId = null,
         string? subgroupId = null,
@@ -227,8 +249,7 @@ public sealed class MessagesDomain
     /// Get per-minute send throughput (peak segments per minute, sending minutes, minutes at a ceiling)
     /// per time bucket and per carrier family. Measured from SENT transitions at campaign × carrier-family
     /// grain — the grain carrier ceilings are enforced at — so a peak here is the figure a ceiling is
-    /// compared against. Only accepted where the environment serves hourly analytics; elsewhere the request
-    /// is rejected with a 400. Returns totals, byDate, byCarrierFamily and byBreakdown
+    /// compared against. Returns totals, byDate, byCarrierFamily and byBreakdown
     /// ({dimension: "carrierFamily", rows}); every row carries segments, messages, peakSegmentsPerMinute,
     /// peakMessagesPerMinute, peakMinute (UTC "YYYY-MM-DD HH:MM:SS", null when no traffic), sendingMinutes,
     /// averageSegmentsPerSendingMinute and minutesAtCeiling.
@@ -242,7 +263,7 @@ public sealed class MessagesDomain
     /// <param name="granularity">Bucket grain of the byDate and byBreakdown rows: "hour" (default; span capped at 7 days) or "day".</param>
     /// <param name="ceiling">Segments-per-minute ceiling. When given, every row also reports minutesAtCeiling; otherwise minutesAtCeiling is null.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
-    /// <param name="registrationId">Filter to traffic attributed to these registrations (hourly analytics only; a 400 while hourly reads are off). Single value or comma-separated list.</param>
+    /// <param name="registrationId">Filter to traffic attributed to these registrations. Single value or comma-separated list.</param>
     public async Task<SignalHouseResponse> GetAnalyticsThroughputAsync(
         string groupId,
         string startDate,
@@ -283,7 +304,7 @@ public sealed class MessagesDomain
     /// channels by type; any other US number is 10DLC and a non-US one is a Virtual Long Code. Carriers is a plain
     /// array of carrier name strings.
     /// </summary>
-    /// <param name="region">Optional region restriction: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400.</param>
+    /// <param name="region">Optional region restriction: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list.</param>
     public async Task<SignalHouseResponse> GetAnalyticsFilterOptionsAsync(
         string groupId,
         RequestOptions? options = null,
@@ -311,11 +332,11 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="channel">Optional channel filter and ranking: "both" (default, all activity) or tenDLC/virtualLongCode/tollFree/shortCode/p2p (single value or comma-separated list).</param>
     /// <param name="messageType">Message type(s) the SENTIMENT figures are scoped to: SMS, MMS or P2P (single value or comma-separated list). Omit for all scored types. Does NOT narrow the message counts, which are always returned split per type and have no filterable type dimension.</param>
-    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400 -- omit the parameter unless it is wanted.</param>
+    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
-    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400.</param>
+    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list.</param>
     /// <param name="regionScopes">Optional JSON array of OR-ed branches, each {region, channels, brandId?, campaignId?, phoneNumber?} with channels from tenDLC, virtualLongCode, tollFree, shortCode, p2p. "[]" matches nothing. Same hourly-analytics gate as region.</param>
-    /// <param name="registrationId">Filter to traffic attributed to these registrations (hourly analytics only; a 400 while hourly reads are off). A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
+    /// <param name="registrationId">Filter to traffic attributed to these registrations. A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
     public async Task<SignalHouseResponse> GetAnalyticsBySubgroupAsync(
         string groupId,
         string? subgroupId = null,
@@ -366,11 +387,11 @@ public sealed class MessagesDomain
     /// Limit is capped server-side at 50 per page.
     /// </summary>
     /// <param name="channel">Optional channel filter and ranking: "both" (default, every code) or tenDLC/virtualLongCode/tollFree/shortCode/p2p (single value or comma-separated list). When one channel is selected, totalErrors reflects only that channel.</param>
-    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400 -- omit the parameter unless it is wanted.</param>
+    /// <param name="carrierFamily">Optional filter by the recipient's resolved carrier family (Default, ATT, TMobile, Verizon, USCellular, GoogleVoice, ClearSky, Interop, RogueMobile, P2P, Standard, IceWireless, Bell, Rogers, Telus, Videotron, SaskTel, Eastlink, Fibernetics); single value or comma-separated list.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
-    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400.</param>
+    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list.</param>
     /// <param name="regionScopes">Optional JSON array of OR-ed branches, each {region, channels, brandId?, campaignId?, phoneNumber?} with channels from tenDLC, virtualLongCode, tollFree, shortCode, p2p. "[]" matches nothing. Same hourly-analytics gate as region.</param>
-    /// <param name="registrationId">Filter to traffic attributed to these registrations (hourly analytics only; a 400 while hourly reads are off). A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
+    /// <param name="registrationId">Filter to traffic attributed to these registrations. A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
     /// <param name="errorCode">Narrow the breakdown to a single failure reason: a numeric Infobip carrier code (as a string, e.g. "607"), the Signal House campaign-opt-out code "OUT", or a no-code failure class (other, moderation, att_limit, p2p_stop, campaign_opt_out, dnc_blocked, bind_hold_expired). Omitted: every reason.</param>
     public async Task<SignalHouseResponse> GetAnalyticsByErrorCodeAsync(
         string groupId,
@@ -431,9 +452,9 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="channel">Optional channel filter: tenDLC, virtualLongCode, tollFree, or shortCode (single value or comma-separated list). Opt-outs are A2P-only, so p2p applies no filter. A tenDLC selection also includes older opt-outs with no channel.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
-    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400.</param>
+    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list.</param>
     /// <param name="regionScopes">Optional JSON array of OR-ed branches, each {region, channels, brandId?, campaignId?, phoneNumber?} with channels from tenDLC, virtualLongCode, tollFree, shortCode, p2p. "[]" matches nothing. Same hourly-analytics gate as region.</param>
-    /// <param name="registrationId">Filter to traffic attributed to these registrations (hourly analytics only; a 400 while hourly reads are off). A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
+    /// <param name="registrationId">Filter to traffic attributed to these registrations. A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
     public async Task<SignalHouseResponse> GetDncAnalyticsAsync(
         string? groupId = null,
         string? subgroupId = null,
@@ -483,9 +504,9 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="channel">Optional channel filter: tenDLC, virtualLongCode, tollFree, or shortCode (single value or comma-separated list). Opt-outs are A2P-only, so p2p applies no filter. A tenDLC selection also includes older opt-outs with no channel.</param>
     /// <param name="dateBounds">Which contract binds startDate/endDate. "day": each bound is widened to its whole UTC day. "exact": a timestamp is bound as the instant it names and a bare date is its whole UTC day. Null: "day".</param>
-    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list. Only accepted where the environment serves hourly analytics; elsewhere any value is rejected with a 400.</param>
+    /// <param name="region">Optional region filter: US, GB, or CA (any case of "UK"/"GB"/"GBR"/"United Kingdom" is accepted for GB), single value or comma-separated list.</param>
     /// <param name="regionScopes">Optional JSON array of OR-ed branches, each {region, channels, brandId?, campaignId?, phoneNumber?} with channels from tenDLC, virtualLongCode, tollFree, shortCode, p2p. "[]" matches nothing. Same hourly-analytics gate as region.</param>
-    /// <param name="registrationId">Filter to traffic attributed to these registrations (hourly analytics only; a 400 while hourly reads are off). A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
+    /// <param name="registrationId">Filter to traffic attributed to these registrations. A phoneNumber filter takes precedence. Single value or comma-separated list.</param>
     public async Task<SignalHouseResponse> GetDncRecordsAsync(
         string? groupId = null,
         string? subgroupId = null,
@@ -638,6 +659,24 @@ public sealed class MessagesDomain
             subgroupId,
             useSignalHouseShortlinks,
         }, options);
+    }
+
+    /// <summary>
+    /// Get one message of any type by its ID.
+    /// </summary>
+    /// <param name="id">The message ID.</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>The message; an unknown ID is a 404.</returns>
+    public async Task<SignalHouseResponse> GetMessageAsync(
+        string id,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?>
+        {
+            { "id", id },
+        });
+
+        return await _client.RequestAsync($"/message/{Uri.EscapeDataString(id)}", HttpMethod.Get, options: options);
     }
 
     /// <summary>

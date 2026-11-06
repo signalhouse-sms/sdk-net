@@ -416,8 +416,15 @@ MESSAGES  (client.Messages)
       string? direction, string? messageType, string? carrier,
       string? sentimentLabel, string? errorCode,
       string? startDate, string? endDate, string? sortField,
-      string? sortOrder, int? page, int? limit, RequestOptions? options)
-    List messages with extensive filters.
+      string? sortOrder, int? page, int? limit, RequestOptions? options, ...,
+      string? templateId, int? templateVersion, string? bulkId,
+      string? fallbackReason, string? billingClass, string? deliveredChannel,
+      bool? isTest)
+    List messages with extensive filters. templateId through isTest are RCS
+    filters and the last parameters, so pass them by name.
+
+  GetMessageAsync(string id, RequestOptions? options)
+    GET /message/:id. Get one message of any type. An unknown ID is a 404. Required: id
 
   GetAnalyticsAsync(string? groupId, string? subgroupId, string? brandId,
       string? campaignId, string? phoneNumber, string? carrier,
@@ -622,7 +629,10 @@ TEMPLATES  (client.Templates)
 
   CreateAsync(string groupId, string name, object body,
       string? tag, RequestOptions? options)
-    POST /template. Creates draft version 1; returns 201 {head, version}.
+    POST /template. Creates draft version 1; returns 201 {head, version, validation}.
+    validation is {valid, errors, warnings}, null when the checks could not run; update returns it too, and
+    publish returns {head, version, warnings}. A draft saves even when validation lists errors. On an RCS send, a
+    blocked row carries blockReason, reason and issues.
 
   ListAsync(string groupId, string? state, string? channel,
       string? tag, string? search, string? sortBy,
@@ -669,6 +679,8 @@ TEMPLATES  (client.Templates)
       RequestOptions? options)
     GET /template/capabilities. channel defaults to "rcs"; provider
     infobip|sinch adds provider limits and unsupported features.
+    Returns the allowed content, limits, time to live ranges (ttlPresets),
+    traffic types per use case and iPhone layout numbers (ios).
 
   GeocodeAddressAsync(string groupId, string address,
       RequestOptions? options)
@@ -685,10 +697,10 @@ TEMPLATES  (client.Templates)
 
 RCS AGENTS  (client.Rcs.Agents)
 --------------------------------------------------------------------------------
-  RCS agents under /rcs/agent. An agent links one 10DLC brand and one 10DLC
-  campaign: the campaign's numbers are its SMS fallback, and the brand and
-  campaign supply the company identity and consent text for the carrier
-  launch. One brand or campaign can serve many agents. An agent is a
+  RCS agents under /rcs/agent. An agent links one brand and one campaign, of
+  any registration type: the campaign's numbers are its SMS fallback, and the
+  brand and campaign supply the company identity and consent text for the
+  carrier launch. One brand or campaign can serve many agents. An agent is a
   registration (type RCS_AGENT, agentId = registrationId "RCSA" + 10
   characters). 404 while RCS is disabled for the environment; 400 while the
   group's rcsEnabled flag is off. To use a new brand and campaign, create the
@@ -759,6 +771,9 @@ RCS AGENTS  (client.Rcs.Agents)
     Signal House's approval files the launch with the carrier partner. Allowed
     from IN_TESTING, REJECTED and CARRIER_REJECTED (409 otherwise); a failed
     requirement is 400 REGISTRATION_INCOMPLETE.
+    The request charges the agent's launch fees: a wallet that cannot cover
+    them gets a 402, and the agent stays where it is.
+    The agent's launchFees quotes what the next request charges.
 
   ArchiveAsync(string agentId, RequestOptions? options)
     POST /rcs/agent/:agentId/archive. Archive the agent.
@@ -772,6 +787,73 @@ RCS AGENTS  (client.Rcs.Agents)
     (224 x 224 px, 50 KB max) or hero (1440 x 448 px, 200 KB max) PNG or
     JPEG and set it on the draft. kind: logo | hero.
     Required: agentId, kind, file
+
+
+RCS MESSAGES  (client.Rcs.Messages)
+--------------------------------------------------------------------------------
+  Send through an agent. 404 while RCS is off for the environment, 403 while
+  the group's rcsEnabled flag is off, 409 while the agent cannot send yet.
+
+  SendAsync(string agentId, object recipients, string? templateId,
+      int? templateVersion, object? content, string? contentFormat,
+      string? trafficType, int? ttlSeconds, string? expireTime, object? fallback,
+      string? statusCallbackUrl, bool? enableShortlink, bool? isTest,
+      string? simulate, RequestOptions? options)
+    POST /message/rcs.
+    Send to up to 100 recipients. A blocked recipient gets a BLOCKED message and
+    the rest still send. Exactly one of templateId or content; at most one of
+    ttlSeconds or expireTime. contentFormat: content.v1 (default) | google.rcs.
+    recipients is a list of { phoneNumber, variables, clientMessageId, metadata }.
+    fallback is { mode (auto, rcs_only, sms_only), channel (auto, sms, mms), from,
+    content: { text, mediaUrls }, validitySeconds }; without content the
+    template's fallback, else a generated one, is used. simulate: not_capable |
+    ttl_expired | delivered | read, approved testers only.
+    Required: agentId, recipients
+    Returns: { requested, enqueued, failed, bulkId, messages } (201)
+
+  ValidateAsync(string agentId, object recipients, ...)
+    POST /message/rcs/validate. Check a send; writes nothing. Takes the same
+    arguments as SendAsync. Required: agentId, recipients
+    Returns: { valid, errors, warnings, billingClass, segments,
+    estimatedCostMicros, unsupportedFiles, recipients }. It runs a send's
+    checks and holds no funds. valid is true only with no errors.
+
+  EstimateAsync(string agentId, object? recipients, int? recipientCount,
+      string? templateId, int? templateVersion, object? content,
+      string? contentFormat, string? trafficType, int? ttlSeconds,
+      string? expireTime, object? fallback, RequestOptions? options)
+    POST /message/estimate with channel "rcs" added. Price a draft in
+    microdollars; no charge or send. Exactly one of recipients or
+    recipientCount. The fallback's from is optional for an estimate; with
+    none, the fallback leg is priced on the channel of the agent's linked
+    campaign. Required: agentId
+    Returns: { billingClass, segments, recipientCount, rcsLeg, fallbackLeg,
+    totals, balance, issues, warnings }
+    rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB,
+    already inside rcsLeg.cost; a message over 100 MB adds a MEDIA_TOO_LARGE
+    issue.
+
+  CapabilitiesAsync(string agentId, IEnumerable<string> phoneNumbers,
+      RequestOptions? options)
+    POST /rcs/capabilities. Report which numbers (up to 500) can receive RCS.
+    Required: agentId, phoneNumbers
+    Returns: { results: [{ phoneNumber, capability }] }, capability being
+    ENABLED, UNREACHABLE or UNKNOWN
+
+  GetAsync(string messageId, RequestOptions? options)
+    GET /message/:messageId. Get one message; the same route as
+    client.Messages.GetMessageAsync. Required: messageId
+
+  ListAsync(string groupId, string from, string to, string? agentId,
+      string? status, int? page, int? limit, string? templateId,
+      int? templateVersion, string? bulkId, string? fallbackReason,
+      string? billingClass, string? deliveredChannel, bool? isTest,
+      RequestOptions? options)
+    GET /message with messageType=RCS. agentId is sent as registrationId,
+    from as startDate and to as endDate. Required: groupId, from, to
+
+  Set RequestOptions.IdempotencyKey on SendAsync to make a retry safe (see
+  IDEMPOTENT REQUESTS).
 
 
 USERS  (client.Users)
@@ -1051,7 +1133,7 @@ to every message from it, counted in segments and in the estimate.
 
 GET /registration accepts groupId, subgroupId, region, type, kind, status,
 parentRegistrationId, phoneNumber (filter to registrations holding this phone
-number), brandId, campaignId (RCS agents linked to that 10DLC brand or
+number), brandId, campaignId (RCS agents linked to that brand or
 campaign), sortBy (createdAt (default), subgroupId, registrationId, region or
 status), sortOrder (asc or desc (default)), page and limit (max 100) and returns
 {data,totalCount,page,limit}.
@@ -1118,24 +1200,25 @@ shortCode and p2p; [] matches nothing and omitting both keeps the existing scope
 Example:
 [{"region":"US","channels":["tenDLC"],"brandId":["BUS1"]},
  {"region":"GB","channels":["virtualLongCode"],"phoneNumber":["447400123456"]}]
-GET /message always accepts them; the analytics and DNC reads accept them only
-where the environment serves hourly analytics and reject them with a 400 elsewhere.
+GET /message always accepts them, as do the analytics and DNC reads.
 
 GetAnalyticsAsync, GetAnalyticsDetailAsync, GetAnalyticsThroughputAsync and
 GetDncAnalyticsAsync accept registrationId (the last optional parameter, so pass
 it by name; a single id or a comma-separated list, like campaignId): filter to
-traffic attributed to these registrations (hourly analytics only; a 400 while
-hourly reads are off). Except on GetAnalyticsThroughputAsync, which has no
+traffic attributed to these registrations. Except on GetAnalyticsThroughputAsync, which has no
 phoneNumber filter, a phoneNumber filter takes precedence. GetPhoneNumbersAsync
 accepts a single registrationId (also after options, pass it by name) to list
 the numbers provisioned under that registration.
 
 GetAnalyticsBySubgroupAsync, GetAnalyticsByErrorCodeAsync and GetDncRecordsAsync accept
-registrationId (the last parameter, pass it by name) the same way, with the same hourly-
-only rule and precedence. GetMessagesAsync accepts registrationId (also last) in every
-environment: it filters to messages attributed to those registrations, and a phoneNumber
-filter narrows further. Every method returns 400 when registrationId is combined with
-campaignId.
+registrationId (the last parameter, pass it by name) the same way, with the same
+precedence. GetMessagesAsync accepts registrationId (after options, pass it by name): it
+filters to messages attributed to those registrations, and a phoneNumber filter narrows
+further. Every method returns 400 when registrationId is combined with campaignId.
+
+GetMessagesAsync takes the RCS filters templateId, templateVersion, bulkId,
+fallbackReason, billingClass, deliveredChannel and isTest as its last parameters, after
+registrationId (pass them by name).
 
 GetAnalyticsFilterOptionsAsync returns each phone number with its type (TOLL_FREE,
 SHORT_CODE, ALPHANUMERIC, VIRTUAL_LONG_NUMBER, and older local-number spellings) and
