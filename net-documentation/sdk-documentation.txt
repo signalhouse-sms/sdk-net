@@ -481,13 +481,17 @@ NUMBERS  (client.Numbers)
   GetPhoneNumbersAsync(string? phoneNumber, string? campaignId,
       string? brandId, string? subgroupId, string? groupId,
       int? page, int? limit, RequestOptions? options,
-      string? registrationId, bool? currentTollFreeCarrier)
+      string? registrationId, bool? currentTollFreeCarrier,
+      bool? released)
     List your phone numbers with filters.
     registrationId: filter to numbers provisioned under this registration.
     currentTollFreeCarrier (after options, so pass it by name): with groupId
     or subgroupId, true returns only toll-free numbers that a new toll-free
     campaign in that group can use (those on the group's current toll-free
     carrier).
+    released (after options, so pass it by name): with subgroupId or groupId,
+    true returns only its released numbers (status RELEASED) instead of its
+    active ones.
 
   GetNumberHealthAsync(string phoneNumber, RequestOptions? options)
     Get the health score, the same one the portal shows, (1–10) for an owned phone number.

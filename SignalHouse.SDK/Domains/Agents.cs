@@ -405,6 +405,12 @@ public sealed class AgentsDomain
     /// (keys: <c>allowedTools</c>, <c>enabled</c>, <c>channelPrompt</c>, <c>greeting</c>,
     /// <c>llmProvider</c>, <c>llmModel</c>, <c>temperature</c>, <c>voiceId</c>). Model
     /// settings are per-channel because each channel is served by a different runtime.
+    /// The sms channel also accepts <c>allowedCommitments</c>: a list of
+    /// <c>{ kind, detail }</c> naming the "a person will..." promises the agent may send on
+    /// autopilot. <c>kind</c> is one of "confirm_booking", "call_back", "text_back",
+    /// "follow_up", "hold_slot" or "send_reminder", each at most once; <c>detail</c> (up to
+    /// 200 characters, or null) is shown to staff. Any other promise is held for review. A
+    /// non-empty list on webchat or voice is rejected.
     /// Spoken channels also accept <c>speed</c> (0.7-1.2), <c>stability</c> (0-1),
     /// <c>similarityBoost</c> (0-1), <c>speechModel</c> (how the agent is voiced, chosen
     /// independently of <c>llmModel</c>), <c>turnEagerness</c>
