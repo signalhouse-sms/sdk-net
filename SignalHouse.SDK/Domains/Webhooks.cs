@@ -25,7 +25,8 @@ public sealed class WebhooksDomain
         string? phoneNumber = null,
         int? page = null,
         int? limit = null,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        string? agentId = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -33,6 +34,7 @@ public sealed class WebhooksDomain
             { "groupId", groupId },
             { "endpointType", endpointType },
             { "phoneNumber", phoneNumber },
+            { "agentId", agentId },
             { "page", page?.ToString() },
             { "limit", limit?.ToString() },
         });
@@ -54,6 +56,11 @@ public sealed class WebhooksDomain
     /// and "CAMPAIGN_HEALTH_BELOW_THRESHOLD" each take { "threshold": n }, the 7-day health score (1.5–10, in
     /// 0.5 steps) below which the event fires. A subscribed health event without a threshold is stored with
     /// the default, 6.
+    /// </para>
+    /// <para>
+    /// webhookData "endpointType" is "Global", "Number" or "Agent". An "Agent" endpoint receives one RCS agent's
+    /// events only: it needs "agentId", and may set "secondaryUrl", which gets one try when every attempt to
+    /// "url" fails.
     /// </para>
     /// </summary>
     public async Task<SignalHouseResponse> CreateWebhookAsync(

@@ -21,7 +21,7 @@ public sealed class BillingDomain
     }
 
     /// <summary>
-    /// Get transaction history with optional filters.
+    /// Get transaction history with optional filters. category: One category, or a comma-separated list: one of the RCS categories RCS_RICH_OUTBOUND, RCS_RICH_MEDIA_OUTBOUND, RCS_INBOUND, RCS_ACTION_CLICK, RCS_MEDIA_SURCHARGE, RCS_FEE_ONBOARDING, RCS_FEE_RENEWAL, RCS_SESSION_ADJUSTMENT or RCS_SESSION_CARRIER_ADJUSTMENT, or RCS_CARRIER_PASSTHROUGH for RCS carrier rows alone. Any other value is rejected with a 400.
     /// </summary>
     public async Task<SignalHouseResponse> GetTransactionHistoryAsync(
         string? groupId = null,
@@ -32,7 +32,10 @@ public sealed class BillingDomain
         string? transactionType = null,
         string? startDate = null,
         string? endDate = null,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        string? category = null,
+        int? page = null,
+        int? limit = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -44,6 +47,9 @@ public sealed class BillingDomain
             { "transactionType", transactionType },
             { "startDate", startDate },
             { "endDate", endDate },
+            { "category", category },
+            { "page", page?.ToString() },
+            { "limit", limit?.ToString() },
         });
 
         return await _client.RequestAsync($"/billing/wallet/transactionHistory{qs}", HttpMethod.Get, options: options);

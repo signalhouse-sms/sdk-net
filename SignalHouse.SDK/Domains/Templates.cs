@@ -118,7 +118,8 @@ public sealed class TemplatesDomain
     /// <summary>
     /// Publish the current draft. Returns { head, version, warnings }. An incomplete draft is a 400 TEMPLATE_INVALID carrying errors
     /// and warnings; no draft is a 409 NO_DRAFT; a draft that changed while it was being published is a 409 DRAFT_CHANGED
-    /// (publish again).
+    /// (publish again). A block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED, whose
+    /// message names the category ("Content moderation flagged this text: spam"). The check passes when the Moderation API fails.
     /// </summary>
     /// <param name="templateId">The template ID.</param>
     /// <param name="groupId">The owning group.</param>
@@ -174,7 +175,8 @@ public sealed class TemplatesDomain
 
     /// <summary>
     /// Validate exactly one of a body or a stored version without writing. Returns { valid, contentHash,
-    /// validatorVersion, errors, warnings }.
+    /// validatorVersion, errors, warnings }. The publish checks run, CONTENT_POLICY_FLAGGED included; saving a draft does not
+    /// run that check.
     /// </summary>
     /// <param name="templateId">The template ID.</param>
     /// <param name="groupId">The owning group.</param>

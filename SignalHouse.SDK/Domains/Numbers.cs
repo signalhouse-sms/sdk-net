@@ -333,6 +333,7 @@ public sealed class NumbersDomain
 
     /// <summary>
     /// Read a phone number's outbound caller name (CNAM) and whether one can be set.
+    /// <c>cnam.source</c> is MANUAL (set on the number), BRAND (the brand's caller name) or AUTO (subgroup auto-apply).
     /// Allowed roles: api, admin, developer, billing, user.
     /// <c>GET /number/{phoneNumber}/cnam</c>.
     /// </summary>
@@ -375,8 +376,8 @@ public sealed class NumbersDomain
     }
 
     /// <summary>
-    /// Remove a phone number's own caller name (CNAM). If its subgroup has caller name auto-apply on,
-    /// the number goes back to the automatic name.
+    /// Remove a phone number's own caller name (CNAM). The number goes back to its brand's caller name if the
+    /// brand has one, else to the automatic name if its subgroup has caller name auto-apply on.
     /// Allowed roles: api, admin, developer.
     /// <c>DELETE /number/{phoneNumber}/cnam</c>.
     /// </summary>

@@ -21,6 +21,7 @@ public sealed class BrandsDomain
     /// <summary>
     /// Get a list of brands with optional filters. brandId may be null until carrier assignment.
     /// Each brand carries `carrierSuspensions` (carrier brand suspension rules; active while liftedAt is null).
+    /// Each brand also carries `cnamName` (its caller name for numbers, or null; see GetCallerNameAsync).
     /// Each toll-free brand carries `tollFree.reviewsBusinessOnSubmit`: whether it's reviewed when it's submitted and keeps
     /// its business details from then on. When that is true, the brand also carries its tollFree businessStructure,
     /// industry, contactEmail, contactJobTitle and contactJobLevel, and `tollFree.rejectionReason`: why it was rejected,
@@ -286,5 +287,67 @@ public sealed class BrandsDomain
         content.Add(new StringContent(explanation), "explanation");
 
         return await _client.MultipartRequestAsync($"/brand/appeal/{safeBrandId}", HttpMethod.Post, content, options);
+    }
+
+    /// <summary>
+    /// Read a brand's caller name (CNAM) and the numbers it applies to: every number whose caller name comes from
+    /// this brand (its campaign numbers, numbers it was picked on, and campaign-less numbers of subgroups that use
+    /// it as their default caller-ID brand).
+    /// Allowed roles: api, admin, developer, billing, user.
+    /// <c>GET /brand/cnam/{brandId}</c>.
+    /// </summary>
+    /// <param name="brandId">Brand lookup id (carrier Brand ID, record _id, or internal reference).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>API response resolving to { brandId, companyName, cnamName, eligible, numbers: { total, items } }; items lists the first 100.</returns>
+    public async Task<SignalHouseResponse> GetCallerNameAsync(
+        string brandId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "brandId", brandId } });
+
+        var safeBrandId = Uri.EscapeDataString(brandId);
+        return await _client.RequestAsync($"/brand/cnam/{safeBrandId}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
+    /// Set a brand's caller name (CNAM). It replaces the caller name on every number whose caller name comes from
+    /// this brand, names set on a number included, and numbers that later come under the brand get it too. The name
+    /// may only remove characters from the brand's registered name and must be 1-15 letters, digits, spaces,
+    /// <c>-</c> or <c>_</c>; the brand must be verified. Numbers are updated at the carrier in the background.
+    /// Allowed roles: api, admin, developer.
+    /// <c>PUT /brand/cnam/{brandId}</c>.
+    /// </summary>
+    /// <param name="brandId">Brand lookup id (carrier Brand ID, record _id, or internal reference).</param>
+    /// <param name="name">The caller name to show.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>API response resolving to { brandId, companyName, cnamName, eligible, numbers: { total, items } }.</returns>
+    public async Task<SignalHouseResponse> SetCallerNameAsync(
+        string brandId,
+        string name,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "brandId", brandId }, { "name", name } });
+
+        var safeBrandId = Uri.EscapeDataString(brandId);
+        return await _client.RequestAsync($"/brand/cnam/{safeBrandId}", HttpMethod.Put, new { name }, options);
+    }
+
+    /// <summary>
+    /// Remove a brand's caller name (CNAM). Numbers that had it go back to the automatic name if their subgroup has
+    /// caller name auto-apply on, otherwise to no caller name. Names set on a number are kept.
+    /// Allowed roles: api, admin, developer.
+    /// <c>DELETE /brand/cnam/{brandId}</c>.
+    /// </summary>
+    /// <param name="brandId">Brand lookup id (carrier Brand ID, record _id, or internal reference).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>API response resolving to { brandId, companyName, cnamName, eligible, numbers: { total, items } }.</returns>
+    public async Task<SignalHouseResponse> DeleteCallerNameAsync(
+        string brandId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "brandId", brandId } });
+
+        var safeBrandId = Uri.EscapeDataString(brandId);
+        return await _client.RequestAsync($"/brand/cnam/{safeBrandId}", HttpMethod.Delete, options: options);
     }
 }

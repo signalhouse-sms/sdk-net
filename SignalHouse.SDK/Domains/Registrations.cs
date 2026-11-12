@@ -20,14 +20,18 @@ public sealed class RegistrationsAdminDomain
     /// </summary>
     /// <param name="registrationId">The registration ID.</param>
     /// <param name="action">"APPROVE" (submits the registration to the provider) or "REJECT".</param>
-    /// <param name="reason">Why the registration was rejected; required for "REJECT".</param>
+    /// <param name="reason">Why the registration was rejected; required for "REJECT". An RCS agent takes 10 to 256 characters.</param>
     /// <param name="options">Additional request options.</param>
+    /// <param name="reasonCode">The rejection catalogue code; required to reject an RCS agent, refused for any other type.</param>
+    /// <param name="rejectionReasons">Field-level reasons for an RCS agent: dictionaries of field, code, reason and recommendedAction.</param>
     /// <returns>The updated registration.</returns>
     public async Task<SignalHouseResponse> ReviewRegistrationAsync(
         string registrationId,
         string action,
         string? reason = null,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        string? reasonCode = null,
+        IEnumerable<IDictionary<string, object?>>? rejectionReasons = null)
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "registrationId", registrationId }, { "action", action } });
 
@@ -36,6 +40,14 @@ public sealed class RegistrationsAdminDomain
         if (reason is not null)
         {
             body["reason"] = reason;
+        }
+        if (reasonCode is not null)
+        {
+            body["reasonCode"] = reasonCode;
+        }
+        if (rejectionReasons is not null)
+        {
+            body["rejectionReasons"] = rejectionReasons;
         }
         return await _client.RequestAsync($"/registration/{safeRegistrationId}/review", HttpMethod.Post, body, options);
     }
@@ -319,19 +331,39 @@ public sealed class RegistrationsDomain
     /// launch request. Allowed while the provider reports the agent ready for testing, after a Signal House rejection,
     /// or after every carrier refused an earlier launch (409 otherwise); a failed requirement is a 400 whose details
     /// carry { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
-    /// An RCS agent's launch request charges its launch fees: a wallet that cannot cover them gets a 402, and nothing changes.
+    /// An RCS agent's launch request charges its launch fees: a wallet that cannot cover them gets a 402, and nothing changes. When any fee is due the request must set acknowledgeFees, or it gets a 400 with code FEE_ACKNOWLEDGEMENT_REQUIRED and nothing is held; a launch with nothing due needs no acknowledgement.
+    /// When the agent's brand vertical is healthcare or insurance, the launch needs the protected health information (PHI) disclosure acknowledged: set acknowledgePhi, or the request gets a 400 REGISTRATION_INCOMPLETE whose errors name consent.phiAcknowledgement. The API records the acknowledgement as consent.phiAcknowledgement { acknowledgedAt, acknowledgedBy } from the caller; the client sends only the boolean, and an agent update cannot set it. Once recorded, a later launch request needs no new acknowledgement.
     /// </summary>
     /// <param name="registrationId">The registration ID (e.g. RCSA7K2M1QZ8RP).</param>
     /// <param name="options">Additional request options.</param>
+    /// <param name="acknowledgeFees">Accept the fees due; required when any are.</param>
+    /// <param name="acknowledgePhi">Accept the PHI disclosure; required for a healthcare or insurance brand.</param>
     /// <returns>The registration, now SIGNAL_HOUSE_REVIEW.</returns>
     public async Task<SignalHouseResponse> LaunchRegistrationAsync(
         string registrationId,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        bool? acknowledgeFees = null,
+        bool? acknowledgePhi = null)
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "registrationId", registrationId } });
 
         var safeRegistrationId = Uri.EscapeDataString(registrationId);
-        return await _client.RequestAsync($"/registration/{safeRegistrationId}/launch", HttpMethod.Post, options: options);
+        var body = LaunchBody(acknowledgeFees, acknowledgePhi);
+        return await _client.RequestAsync($"/registration/{safeRegistrationId}/launch", HttpMethod.Post, body, options);
+    }
+
+    /// <summary>
+    /// A launch request's body: the acknowledgements the caller set, or null when there are none.
+    /// </summary>
+    /// <param name="acknowledgeFees">Accept the fees due, or null to leave it out.</param>
+    /// <param name="acknowledgePhi">Accept the PHI disclosure, or null to leave it out.</param>
+    /// <returns>The body, or null.</returns>
+    internal static Dictionary<string, object?>? LaunchBody(bool? acknowledgeFees, bool? acknowledgePhi)
+    {
+        var body = new Dictionary<string, object?>();
+        if (acknowledgeFees is not null) body["acknowledgeFees"] = acknowledgeFees;
+        if (acknowledgePhi is not null) body["acknowledgePhi"] = acknowledgePhi;
+        return body.Count == 0 ? null : body;
     }
 
     /// <summary>

@@ -666,7 +666,7 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="id">The message ID.</param>
     /// <param name="options">Optional per-request overrides.</param>
-    /// <returns>The message; an unknown ID is a 404.</returns>
+    /// <returns>The message; an unknown ID is a 404. An outbound RCS message and its fallback leg also carry costBreakdown, { legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }, which is null when it cannot be computed.</returns>
     public async Task<SignalHouseResponse> GetMessageAsync(
         string id,
         RequestOptions? options = null)
@@ -677,6 +677,24 @@ public sealed class MessagesDomain
         });
 
         return await _client.RequestAsync($"/message/{Uri.EscapeDataString(id)}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
+    /// Get the taps on one RCS message, oldest first.
+    /// </summary>
+    /// <param name="id">The message ID.</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    /// <returns>The taps as { results }; an unknown ID is a 404.</returns>
+    public async Task<SignalHouseResponse> GetMessageInteractionsAsync(
+        string id,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?>
+        {
+            { "id", id },
+        });
+
+        return await _client.RequestAsync($"/message/{Uri.EscapeDataString(id)}/interactions", HttpMethod.Get, options: options);
     }
 
     /// <summary>

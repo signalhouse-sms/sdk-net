@@ -53,7 +53,7 @@ public sealed class RcsAgentsDomain
     /// <param name="consent">Optional launch text { optInDetails, optInUrl, optInResponse, optOutDetails, optOutResponse, helpResponse, campaignDescription, messageExamples, estimatedMonthlyVolume, launchVideoUrl }; every field is required before the launch request.</param>
     /// <param name="contact">Optional launch contact { firstName, lastName, role, email, mobile }: the individual at the brand the carrier partner's reviewers may write to; required in full before the launch request.</param>
     /// <param name="useCase">Optional OTP, TRANSACTIONAL, PROMOTIONAL or MULTI_USE; required before submit.</param>
-    /// <param name="billingCategory">Optional NON_CONVERSATIONAL (default) or CONVERSATIONAL; submit refuses CONVERSATIONAL.</param>
+    /// <param name="billingCategory">Optional NON_CONVERSATIONAL (default, per message) or CONVERSATIONAL (per interactive session).</param>
     /// <param name="defaultFallback">Optional { mode (auto, rcs_only, sms_only, none), channel (auto, sms, mms), from (a number on the linked campaign) }.</param>
     /// <param name="excludedCarriers">Optional [] or ["T_MOBILE"] (the carrier partner's carrier name).</param>
     /// <param name="testers">Optional tester numbers (up to 200), invited once the agent exists at the carrier.</param>
@@ -84,7 +84,7 @@ public sealed class RcsAgentsDomain
     /// </summary>
     /// <param name="groupId">Optional group ID filter.</param>
     /// <param name="subgroupId">Optional subgroup ID filter.</param>
-    /// <param name="status">Optional status or comma-separated list from DRAFT, PENDING_REVIEW, REJECTED, AGENT_CREATING and ARCHIVED.</param>
+    /// <param name="status">Optional status or comma-separated list from DRAFT, PENDING_REVIEW, REJECTED, AGENT_CREATING, ARCHIVE_PENDING and ARCHIVED.</param>
     /// <param name="brandId">Optional: agents linked to this brand (carrier brand ID, provisional UUID or _id).</param>
     /// <param name="campaignId">Optional: agents linked to this campaign (campaign ID or _id).</param>
     /// <param name="page">Page number (default 1).</param>
@@ -191,8 +191,8 @@ public sealed class RcsAgentsDomain
 
     /// <summary>
     /// Submit a draft: create the agent at the carrier partner, with no review first (status AGENT_CREATING, then
-    /// IN_TESTING once the partner reports it ready). It needs the full profile, a useCase and NON_CONVERSATIONAL
-    /// billing; otherwise a 400 whose details carry { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
+    /// IN_TESTING once the partner reports it ready). It needs the full profile, a useCase and a
+    /// billingCategory; otherwise a 400 whose details carry { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
     /// </summary>
     /// <param name="agentId">The agent ID.</param>
     /// <param name="options">Additional request options.</param>
@@ -211,22 +211,30 @@ public sealed class RcsAgentsDomain
     /// CARRIER_REJECTED (409 otherwise); a failed requirement is a 400 whose details carry
     /// { code: "REGISTRATION_INCOMPLETE", errors, warnings }. Sends POST /registration/:agentId/launch: the agent is a
     /// registration.
-    /// The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. The agent's launchFees quotes what the next request charges.
+    /// The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. When any fee is due the request must set acknowledgeFees, or it gets a 400 with code FEE_ACKNOWLEDGEMENT_REQUIRED and nothing is held; a launch with nothing due needs no acknowledgement. The agent's launchFees quotes what the next request charges.
+    /// When the agent's brand vertical is healthcare or insurance, the launch needs the protected health information (PHI) disclosure acknowledged: set acknowledgePhi, or the request gets a 400 REGISTRATION_INCOMPLETE whose errors name consent.phiAcknowledgement. The API records the acknowledgement as consent.phiAcknowledgement { acknowledgedAt, acknowledgedBy } from the caller; the client sends only the boolean, and an agent update cannot set it. Once recorded, a later launch request needs no new acknowledgement.
     /// </summary>
     /// <param name="agentId">The agent ID.</param>
     /// <param name="options">Additional request options.</param>
+    /// <param name="acknowledgeFees">Accept the fees due; required when any are.</param>
+    /// <param name="acknowledgePhi">Accept the PHI disclosure; required for a healthcare or insurance brand.</param>
     /// <returns>The agent.</returns>
     /// <exception cref="ValidationException">agentId is null.</exception>
     public async Task<SignalHouseResponse> LaunchAsync(
         string agentId,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        bool? acknowledgeFees = null,
+        bool? acknowledgePhi = null)
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId } });
-        return await _client.RequestAsync($"/registration/{Uri.EscapeDataString(agentId)}/launch", HttpMethod.Post, options: options);
+        var body = RegistrationsDomain.LaunchBody(acknowledgeFees, acknowledgePhi);
+        return await _client.RequestAsync($"/registration/{Uri.EscapeDataString(agentId)}/launch", HttpMethod.Post, body, options);
     }
 
     /// <summary>
-    /// Archive an agent (status ARCHIVED).
+    /// Archive an agent (status ARCHIVE_PENDING or ARCHIVED). One the carrier partner created stops sending at once and
+    /// stays ARCHIVE_PENDING until Signal House confirms the partner cancelled it, then ARCHIVED. Archiving cannot be
+    /// undone; an agent already ARCHIVE_PENDING answers 409.
     /// </summary>
     /// <param name="agentId">The agent ID.</param>
     /// <param name="options">Additional request options.</param>
@@ -255,6 +263,24 @@ public sealed class RcsAgentsDomain
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "phoneNumber", phoneNumber } });
         return await _client.RequestAsync($"{RcsAgentRequests.AgentPath(agentId)}/testers/{Uri.EscapeDataString(phoneNumber)}/resend", HttpMethod.Post, options: options);
+    }
+
+    /// <summary>
+    /// Remove a tester at once, at any point before the agent is archived. The number must be a tester on the agent
+    /// (404); an archived agent answers 409.
+    /// </summary>
+    /// <param name="agentId">The agent ID.</param>
+    /// <param name="phoneNumber">The tester's US number, with or without the +.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The agent.</returns>
+    /// <exception cref="ValidationException">agentId or phoneNumber is null.</exception>
+    public async Task<SignalHouseResponse> RemoveTesterAsync(
+        string agentId,
+        string phoneNumber,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "phoneNumber", phoneNumber } });
+        return await _client.RequestAsync($"{RcsAgentRequests.AgentPath(agentId)}/testers/{Uri.EscapeDataString(phoneNumber)}", HttpMethod.Delete, options: options);
     }
 
     /// <summary>
@@ -315,7 +341,7 @@ public sealed class RcsMessagesDomain
     /// <param name="isTest">Send as a test; approved testers only.</param>
     /// <param name="simulate">not_capable, ttl_expired, delivered or read; approved testers only.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>{ requested, enqueued, failed, bulkId, messages }. A blocked row carries blockReason, reason and issues; an archived template answers 409 TEMPLATE_ARCHIVED.</returns>
+    /// <returns>{ requested, enqueued, failed, bulkId, messages }. A blocked row carries blockReason, reason and issues; an archived template answers 409 TEMPLATE_ARCHIVED. A recipient from 19999990000 to 19999990359 makes the whole request a simulation, as on SMS: it returns { simulated: true, webhooks } and nothing is stored, sent or charged.</returns>
     /// <exception cref="ValidationException">agentId or recipients is null.</exception>
     public async Task<SignalHouseResponse> SendAsync(
         string agentId,
@@ -430,7 +456,7 @@ public sealed class RcsMessagesDomain
     /// <param name="expireTime">ISO-8601 time the RCS message expires.</param>
     /// <param name="fallback">As on SendAsync, but its from is optional here; with none, the leg is priced on the channel of the agent's linked campaign.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>{ billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB, already inside rcsLeg.cost; a message over 100 MB adds a MEDIA_TOO_LARGE issue.</returns>
+    /// <returns>{ billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB for one recipient, and rcsLeg.cost already holds it for every recipient; rcsLeg.cost is null with the fallback mode sms_only; a message over 100 MB adds a MEDIA_TOO_LARGE issue.</returns>
     /// <exception cref="ValidationException">agentId is null.</exception>
     public async Task<SignalHouseResponse> EstimateAsync(
         string agentId,
@@ -472,7 +498,7 @@ public sealed class RcsMessagesDomain
     /// <param name="agentId">The agent (RCSA…).</param>
     /// <param name="phoneNumbers">Up to 500 numbers, 10-15 digits, with or without the +.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>{ results: [{ phoneNumber, capability }] }, capability being ENABLED, UNREACHABLE or UNKNOWN.</returns>
+    /// <returns>{ results: [{ phoneNumber, capability, rcsEnabled, reason, features, carrier, checkedAt, cached }] }, capability being ENABLED, UNREACHABLE or UNKNOWN, and reason CAPABLE, NOT_CAPABLE, NOT_LAUNCHED_ON_CARRIER or UNKNOWN; rcsEnabled is true only for CAPABLE, carrier and checkedAt may be null, and features is empty today.</returns>
     /// <exception cref="ValidationException">agentId or phoneNumbers is null.</exception>
     public async Task<SignalHouseResponse> CapabilitiesAsync(
         string agentId,
@@ -481,6 +507,39 @@ public sealed class RcsMessagesDomain
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId }, { "phoneNumbers", phoneNumbers } });
         return await _client.RequestAsync("/rcs/capabilities", HttpMethod.Post, new { agentId, phoneNumbers }, options);
+    }
+
+    /// <summary>
+    /// Fake an inbound event from an approved tester of the agent, with no carrier involved: it runs the real inbound handlers and webhooks, as free test traffic. A simulated STOP really opts the tester out; a simulated START clears it. Anyone else gets a 403 with code NOT_TESTER. Returns 202 with { status, messageId }.
+    /// </summary>
+    /// <param name="agentId">The agent (RCSA…).</param>
+    /// <param name="from">The approved tester's number.</param>
+    /// <param name="type">TEXT, SUGGESTION, LOCATION, FILE or UNSUBSCRIBE.</param>
+    /// <param name="text">The text; required for TEXT.</param>
+    /// <param name="postbackData">The tapped suggestion's postback; SUGGESTION needs this or buttonId.</param>
+    /// <param name="messageId">The message a tap answers; the latest message delivered to the tester by default.</param>
+    /// <param name="buttonId">The suggestion's position, as webhooks report it.</param>
+    /// <param name="latitude">Required for LOCATION.</param>
+    /// <param name="longitude">Required for LOCATION.</param>
+    /// <param name="fileName">The file's name, for FILE.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>{ status: "QUEUED", messageId }.</returns>
+    /// <exception cref="ValidationException">agentId, from or type is null.</exception>
+    public async Task<SignalHouseResponse> SimulateInboundAsync(
+        string agentId,
+        string from,
+        string type,
+        string? text = null,
+        string? postbackData = null,
+        string? messageId = null,
+        string? buttonId = null,
+        double? latitude = null,
+        double? longitude = null,
+        string? fileName = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId }, { "from", from }, { "type", type } });
+        return await _client.RequestAsync("/message/rcs/simulate-inbound", HttpMethod.Post, new { agentId, from, type, text, postbackData, messageId, buttonId, latitude, longitude, fileName }, options);
     }
 
     /// <summary>
@@ -555,6 +614,7 @@ public sealed class RcsMessagesDomain
             { "deliveredChannel", deliveredChannel },
             { "isTest", isTest?.ToString().ToLowerInvariant() },
             { "messageType", "RCS" },
+            { "dateBounds", "exact" },
         });
         return await _client.RequestAsync($"/message{qs}", HttpMethod.Get, options: options);
     }
