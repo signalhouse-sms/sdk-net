@@ -552,6 +552,46 @@ public sealed class MessagesDomain
     }
 
     /// <summary>
+    /// Export the group's consent ledger, newest first: one append-only record per opt-out or opt-in instruction a
+    /// recipient gave (a STOP or START keyword, or the confirmation of an opt-out link). The ledger records only;
+    /// sends do not read it. The response is { data, total, page, limit }. Each record carries groupId, subgroupId,
+    /// recipientPhoneNumber (the handset, digits), phoneNumber (the business number, or the RCS agent id, that
+    /// received the instruction), scope { type, id } (CAMPAIGN, AGENT or SUBGROUP, with that campaign, agent or
+    /// subgroup id), clearedScopes (for OPT_IN, every { type, id } the START cleared; empty for OPT_OUT),
+    /// action (OPT_OUT or OPT_IN), source (KEYWORD or LINK), keyword ("LINK" for a link), messageType
+    /// (SMS, MMS or RCS), messageId (the inbound message id; for a link, the opt-out link's id),
+    /// actor { type: "RECIPIENT" }, occurredAt and createdAt.
+    /// </summary>
+    /// <param name="groupId">Group ID. Required.</param>
+    /// <param name="recipientPhoneNumber">Filter to one handset, in any spelling; it is matched on its digits.</param>
+    /// <param name="startDate">Filter on occurredAt. A bare date is its whole UTC day; a timestamp is bound as sent.</param>
+    /// <param name="endDate">Filter on occurredAt. A bare date is its whole UTC day; a timestamp is bound as sent.</param>
+    /// <param name="page">Page number (default 1).</param>
+    /// <param name="limit">Records per page (default 100, max 500).</param>
+    /// <param name="options">Optional request options.</param>
+    public async Task<SignalHouseResponse> GetConsentRecordsAsync(
+        string? groupId = null,
+        string? recipientPhoneNumber = null,
+        string? startDate = null,
+        string? endDate = null,
+        int? page = null,
+        int? limit = null,
+        RequestOptions? options = null)
+    {
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "groupId", groupId },
+            { "recipientPhoneNumber", recipientPhoneNumber },
+            { "startDate", startDate },
+            { "endDate", endDate },
+            { "page", page?.ToString() },
+            { "limit", limit?.ToString() },
+        });
+
+        return await _client.RequestAsync($"/message/dnc/consent-records{qs}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
     /// Send an SMS message to one or more recipients.
     /// </summary>
     /// <param name="senderPhoneNumber">The digits-only 5-6 digit Short Code or 10+ digit long number to send from, or a READY alphanumeric sender ID (e.g. "ACME"; UK recipients and SMS only). Every message from an alphanumeric sender gets "\nOpt out: sihou.io/o/{code}" appended by the server, counted in segments.</param>
@@ -666,7 +706,7 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="id">The message ID.</param>
     /// <param name="options">Optional per-request overrides.</param>
-    /// <returns>The message; an unknown ID is a 404. An outbound RCS message and its fallback leg also carry costBreakdown, { legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }, which is null when it cannot be computed.</returns>
+    /// <returns>The message; an unknown ID is a 404. An outbound RCS message and its fallback leg also carry costBreakdown, { legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }, which is null when it cannot be computed. A settled RCS message also carries carrierFeeMicros: the carrier pass-through and media surcharge it was charged.</returns>
     public async Task<SignalHouseResponse> GetMessageAsync(
         string id,
         RequestOptions? options = null)

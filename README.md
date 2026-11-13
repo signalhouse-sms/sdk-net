@@ -160,6 +160,7 @@ Every method returns a `SignalHouseResponse`:
 | `Subscriptions` | `SubscriptionsDomain`  | 3 + 5 admin |
 | `Templates`     | `TemplatesDomain`      | 10      |
 | `Users`         | `UsersDomain`          | 7 + 2 admin |
+| `Verify`        | `VerifyDomain`         | 3       |
 | `Webhooks`      | `WebhooksDomain`       | 4       |
 
 ## License

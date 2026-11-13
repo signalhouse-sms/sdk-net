@@ -60,8 +60,44 @@ public sealed class RcsAgentsDomain
     /// <param name="options">Additional request options.</param>
     /// <returns>The new agent.</returns>
     /// <exception cref="ValidationException">brandId is null.</exception>
+    public Task<SignalHouseResponse> CreateAsync(
+        string brandId,
+        string? campaignId = null,
+        object? agent = null,
+        object? consent = null,
+        object? contact = null,
+        string? useCase = null,
+        string? billingCategory = null,
+        object? defaultFallback = null,
+        List<string>? excludedCarriers = null,
+        List<string>? testers = null,
+        RequestOptions? options = null)
+    {
+        return CreateAsync(brandId, autofill: null, campaignId: campaignId, agent: agent, consent: consent, contact: contact,
+            useCase: useCase, billingCategory: billingCategory, defaultFallback: defaultFallback, excludedCarriers: excludedCarriers,
+            testers: testers, options: options);
+    }
+
+    /// <summary>
+    /// Create an agent draft with prefill metadata. See the overload without <paramref name="autofill"/> to create without it.
+    /// </summary>
+    /// <param name="brandId">The brand: carrier brand ID, provisional UUID or _id.</param>
+    /// <param name="autofill">Where prefilled fields came from, keyed by path ("consent.optInDetails" to { source, sourceId, at, edited }); the API adds its own markers.</param>
+    /// <param name="campaignId">Optional campaign of that brand (campaign ID or _id); required before submit.</param>
+    /// <param name="agent">Optional profile fields.</param>
+    /// <param name="consent">Optional launch text fields.</param>
+    /// <param name="contact">Optional launch contact fields.</param>
+    /// <param name="useCase">Optional OTP, TRANSACTIONAL, PROMOTIONAL or MULTI_USE.</param>
+    /// <param name="billingCategory">Optional NON_CONVERSATIONAL or CONVERSATIONAL.</param>
+    /// <param name="defaultFallback">Optional SMS fallback.</param>
+    /// <param name="excludedCarriers">Optional excluded carriers.</param>
+    /// <param name="testers">Optional tester numbers.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The new agent.</returns>
+    /// <exception cref="ValidationException">brandId is null.</exception>
     public async Task<SignalHouseResponse> CreateAsync(
         string brandId,
+        object? autofill,
         string? campaignId = null,
         object? agent = null,
         object? consent = null,
@@ -75,7 +111,7 @@ public sealed class RcsAgentsDomain
     {
         HttpClientWrapper.Require(new Dictionary<string, object?> { { "brandId", brandId } });
 
-        var payload = RcsAgentRequests.Body(brandId, campaignId, false, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers);
+        var payload = RcsAgentRequests.Body(brandId, campaignId, false, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers, autofill: autofill);
         return await _client.RequestAsync("/rcs/agent", HttpMethod.Post, payload, options);
     }
 
@@ -119,7 +155,7 @@ public sealed class RcsAgentsDomain
     /// </summary>
     /// <param name="agentId">The agent ID (e.g. RCSA7K2M1QZ8RP).</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>The agent.</returns>
+    /// <returns>The agent; googleAgentId is Google's id for it, null until Google has created the agent.</returns>
     /// <exception cref="ValidationException">agentId is null.</exception>
     public async Task<SignalHouseResponse> GetAsync(
         string agentId,
@@ -132,7 +168,10 @@ public sealed class RcsAgentsDomain
     /// Edit an agent while it may change: a draft, a Signal House rejection, a request for changes, or an agent in
     /// testing (the change is pushed to the carrier partner). agent, consent and contact merge field by field; every
     /// other key replaces. Null arguments are left out of the body. 409 in any other status; brandId is locked once the
-    /// agent exists at the partner and billingCategory once a launch was requested.
+    /// agent exists at the partner and billingCategory once a launch was requested. After a carrier rejected a launch
+    /// other carriers took (PARTIALLY_LAUNCHED with a REJECTED carrier), only consent and contact may change, and nothing
+    /// is pushed: send them with RequestCarrierUpdateAsync. While a carrier update is REQUESTED, edits return 409; editing
+    /// opens again after staff mark it SENT.
     /// </summary>
     /// <param name="agentId">The agent ID.</param>
     /// <param name="brandId">Optional: relink to another brand of the same subgroup.</param>
@@ -151,8 +190,54 @@ public sealed class RcsAgentsDomain
     /// <param name="options">Additional request options.</param>
     /// <returns>The agent.</returns>
     /// <exception cref="ValidationException">agentId is null.</exception>
+    public Task<SignalHouseResponse> UpdateAsync(
+        string agentId,
+        string? brandId = null,
+        string? campaignId = null,
+        bool unlinkCampaign = false,
+        object? agent = null,
+        object? consent = null,
+        object? contact = null,
+        string? useCase = null,
+        string? billingCategory = null,
+        object? defaultFallback = null,
+        List<string>? excludedCarriers = null,
+        List<string>? testers = null,
+        bool clearUseCase = false,
+        bool clearDefaultFallback = false,
+        RequestOptions? options = null)
+    {
+        return UpdateAsync(agentId, autofill: null, brandId: brandId, campaignId: campaignId, unlinkCampaign: unlinkCampaign,
+            agent: agent, consent: consent, contact: contact, useCase: useCase, billingCategory: billingCategory,
+            defaultFallback: defaultFallback, excludedCarriers: excludedCarriers, testers: testers, clearUseCase: clearUseCase,
+            clearDefaultFallback: clearDefaultFallback, options: options);
+    }
+
+    /// <summary>
+    /// Edit an agent and replace its prefill markers. While a carrier update is REQUESTED, edits return 409; editing
+    /// opens again after staff mark it SENT.
+    /// </summary>
+    /// <param name="agentId">The agent ID.</param>
+    /// <param name="autofill">Optional: replaces the prefill markers; omitted markers are kept and changed fields turn edited.</param>
+    /// <param name="brandId">Optional: relink to another brand of the same subgroup.</param>
+    /// <param name="campaignId">Optional: link or relink the campaign.</param>
+    /// <param name="unlinkCampaign">Send campaignId: null to unlink the campaign (overrides campaignId).</param>
+    /// <param name="agent">Optional profile fields to change.</param>
+    /// <param name="consent">Optional consent fields to change.</param>
+    /// <param name="contact">Optional launch contact fields to change.</param>
+    /// <param name="useCase">Optional use case.</param>
+    /// <param name="billingCategory">Optional billing category.</param>
+    /// <param name="defaultFallback">Optional fallback { mode, channel, from }.</param>
+    /// <param name="excludedCarriers">Optional [] or ["T_MOBILE"] (the carrier partner's carrier name).</param>
+    /// <param name="testers">Optional tester numbers.</param>
+    /// <param name="clearUseCase">Send useCase: null to clear the use case (overrides useCase).</param>
+    /// <param name="clearDefaultFallback">Send defaultFallback: null to remove the fallback (overrides defaultFallback).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The agent.</returns>
+    /// <exception cref="ValidationException">agentId is null.</exception>
     public async Task<SignalHouseResponse> UpdateAsync(
         string agentId,
+        object? autofill,
         string? brandId = null,
         string? campaignId = null,
         bool unlinkCampaign = false,
@@ -170,13 +255,14 @@ public sealed class RcsAgentsDomain
     {
         var path = RcsAgentRequests.AgentPath(agentId);
         var payload = RcsAgentRequests.Body(brandId, campaignId, unlinkCampaign, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers,
-            clearUseCase, clearDefaultFallback);
+            clearUseCase, clearDefaultFallback, autofill);
         return await _client.RequestAsync(path, HttpMethod.Put, payload, options);
     }
 
     /// <summary>
-    /// Check an agent against every submit requirement without writing. Returns { valid, errors: [{ field, reason }],
-    /// warnings: [{ field, reason }] }.
+    /// Check an agent against every submit requirement without writing. Returns { valid, errors: [{ field, reason, code? }],
+    /// warnings: [{ field, reason }] }; a copy-rule error at the launch gate carries the carrier partner's key as code
+    /// (for example OPT_IN_MSG_RATE_DISCL_MISSING).
     /// </summary>
     /// <param name="agentId">The agent ID.</param>
     /// <param name="options">Additional request options.</param>
@@ -194,6 +280,8 @@ public sealed class RcsAgentsDomain
     /// IN_TESTING once the partner reports it ready). It needs the full profile, a useCase and a
     /// billingCategory; otherwise a 400 whose details carry { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
     /// </summary>
+    /// <remarks>A group that has not finished account verification gets a 403 with code GROUP_UNVERIFIED, and a rejected
+    /// one a 403 with code GROUP_REJECTED; a pending verification passes.</remarks>
     /// <param name="agentId">The agent ID.</param>
     /// <param name="options">Additional request options.</param>
     /// <returns>The agent.</returns>
@@ -209,8 +297,10 @@ public sealed class RcsAgentsDomain
     /// Request the agent's launch: the launch requirements are checked and the agent goes to Signal House review (status
     /// PENDING_REVIEW), whose approval files the launch with the carrier partner. Allowed from IN_TESTING, REJECTED and
     /// CARRIER_REJECTED (409 otherwise); a failed requirement is a 400 whose details carry
-    /// { code: "REGISTRATION_INCOMPLETE", errors, warnings }. Sends POST /registration/:agentId/launch: the agent is a
-    /// registration.
+    /// { code: "REGISTRATION_INCOMPLETE", errors, warnings }, and a copy-rule error carries the carrier partner's key as its
+    /// code (for example OPT_IN_MSG_RATE_DISCL_MISSING). A group that has not finished account verification gets a 403
+    /// with code GROUP_UNVERIFIED, and a rejected one a 403 with code GROUP_REJECTED. Sends POST
+    /// /registration/:agentId/launch: the agent is a registration.
     /// The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. When any fee is due the request must set acknowledgeFees, or it gets a 400 with code FEE_ACKNOWLEDGEMENT_REQUIRED and nothing is held; a launch with nothing due needs no acknowledgement. The agent's launchFees quotes what the next request charges.
     /// When the agent's brand vertical is healthcare or insurance, the launch needs the protected health information (PHI) disclosure acknowledged: set acknowledgePhi, or the request gets a 400 REGISTRATION_INCOMPLETE whose errors name consent.phiAcknowledgement. The API records the acknowledgement as consent.phiAcknowledgement { acknowledgedAt, acknowledgedBy } from the caller; the client sends only the boolean, and an agent update cannot set it. Once recorded, a later launch request needs no new acknowledgement.
     /// </summary>
@@ -232,6 +322,25 @@ public sealed class RcsAgentsDomain
     }
 
     /// <summary>
+    /// Send Signal House the corrected launch answers after a carrier rejected a launch other carriers took. The carrier
+    /// partner takes no change through its API once a carrier launched, so Signal House emails it the update; edit
+    /// consent and contact first. The agent's carrierUpdate reads REQUESTED for the rejected carriers, then SENT once
+    /// Signal House sent it. 409 when no carrier is REJECTED after a partial launch, or an update already waits. Sends
+    /// POST /registration/:agentId/carrier-update: the agent is a registration.
+    /// </summary>
+    /// <param name="agentId">The agent ID.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>The agent's registration, with data.carrierUpdate.</returns>
+    /// <exception cref="ValidationException">agentId is null.</exception>
+    public async Task<SignalHouseResponse> RequestCarrierUpdateAsync(
+        string agentId,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId } });
+        return await _client.RequestAsync($"/registration/{Uri.EscapeDataString(agentId)}/carrier-update", HttpMethod.Post, options: options);
+    }
+
+    /// <summary>
     /// Archive an agent (status ARCHIVE_PENDING or ARCHIVED). One the carrier partner created stops sending at once and
     /// stays ARCHIVE_PENDING until Signal House confirms the partner cancelled it, then ARCHIVED. Archiving cannot be
     /// undone; an agent already ARCHIVE_PENDING answers 409.
@@ -245,6 +354,28 @@ public sealed class RcsAgentsDomain
         RequestOptions? options = null)
     {
         return await _client.RequestAsync($"{RcsAgentRequests.AgentPath(agentId)}/archive", HttpMethod.Post, options: options);
+    }
+
+    /// <summary>
+    /// Make the links that start a chat with the agent: an sms: deep link in Google's format, and a short link that
+    /// redirects to it, for a QR code. With the agent's defaultFallback.from, the deep link names that number, so a
+    /// handset that cannot reach the agent texts it. The same request returns the same short link. The links reach
+    /// approved testers until a carrier launches the agent. Before Google has created the agent the request answers 409
+    /// with code GOOGLE_AGENT_PENDING.
+    /// </summary>
+    /// <param name="agentId">The agent ID.</param>
+    /// <param name="body">Optional message the chat opens with, prefilled on the handset (max 1,000 characters).</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>{ googleAgentId, deepLink, shortLink }.</returns>
+    /// <exception cref="ValidationException">agentId is null.</exception>
+    public async Task<SignalHouseResponse> CreateEntryPointsAsync(
+        string agentId,
+        string? body = null,
+        RequestOptions? options = null)
+    {
+        var path = RcsAgentRequests.AgentPath(agentId);
+        var payload = body is null ? null : new Dictionary<string, object?> { { "body", body } };
+        return await _client.RequestAsync($"{path}/entry-points", HttpMethod.Post, payload, options);
     }
 
     /// <summary>
@@ -380,6 +511,70 @@ public sealed class RcsMessagesDomain
             { "simulate", simulate },
         });
         return await _client.RequestAsync("/message/rcs", HttpMethod.Post, payload, options);
+    }
+
+    /// <summary>
+    /// Send an RCS message to up to 10,000 recipients in the background (HTTP 202). The request runs the send's request
+    /// checks, splits the recipients into chunks of 100 and queues each chunk. Every message carries the shared bulkId;
+    /// track progress with the messages list filtered by bulkId (GET /message?bulkId=) and per-message webhooks. A chunk
+    /// the wallet cannot cover, or that is refused after acceptance, gets BLOCKED messages with blockReason
+    /// INSUFFICIENT_FUNDS or SEND_REFUSED; a chunk that keeps failing gets SEND_FAILED. Set RequestOptions.IdempotencyKey
+    /// to make a retry safe (same bulkId, no duplicate sends); a retry without one may send duplicates.
+    /// </summary>
+    /// <param name="agentId">The agent that sends (RCSA…).</param>
+    /// <param name="recipients">Up to 10,000 recipients, each { phoneNumber, variables?, clientMessageId?, metadata? } (a list of Dictionary, JsonElement or JsonNode).</param>
+    /// <param name="templateId">A template to send; exactly one of templateId or content.</param>
+    /// <param name="templateVersion">A published version of templateId; needs templateId. Pinned when the batch is accepted.</param>
+    /// <param name="content">Inline content (a Dictionary, JsonElement or JsonNode); exactly one of templateId or content.</param>
+    /// <param name="contentFormat">content.v1 (default) or google.rcs.</param>
+    /// <param name="trafficType">AUTHENTICATION, TRANSACTION, SERVICEREQUEST, ACKNOWLEDGEMENT or PROMOTION; required on a MULTI_USE agent when the template sets none.</param>
+    /// <param name="ttlSeconds">Seconds each RCS message may wait for delivery, from when its chunk is sent; at most one of ttlSeconds or expireTime.</param>
+    /// <param name="expireTime">ISO-8601 time the RCS messages expire.</param>
+    /// <param name="fallback">As on SendAsync.</param>
+    /// <param name="statusCallbackUrl">URL that receives each message's status events.</param>
+    /// <param name="enableShortlink">Shorten the links in the message.</param>
+    /// <param name="isTest">Send as a test; approved testers only.</param>
+    /// <param name="simulate">not_capable, ttl_expired, delivered or read; approved testers only.</param>
+    /// <param name="options">Additional request options.</param>
+    /// <returns>{ bulkId, status: "ACCEPTED", recipientCount }. A recipient from 19999990000 to 19999990359 makes the whole request a simulation, as on SendAsync.</returns>
+    /// <exception cref="ValidationException">agentId or recipients is null.</exception>
+    public async Task<SignalHouseResponse> SendBatchAsync(
+        string agentId,
+        object recipients,
+        string? templateId = null,
+        int? templateVersion = null,
+        object? content = null,
+        string? contentFormat = null,
+        string? trafficType = null,
+        int? ttlSeconds = null,
+        string? expireTime = null,
+        object? fallback = null,
+        string? statusCallbackUrl = null,
+        bool? enableShortlink = null,
+        bool? isTest = null,
+        string? simulate = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "agentId", agentId }, { "recipients", recipients } });
+
+        var payload = RcsMessageRequests.Body(new Dictionary<string, object?>
+        {
+            { "agentId", agentId },
+            { "recipients", recipients },
+            { "templateId", templateId },
+            { "templateVersion", templateVersion },
+            { "content", content },
+            { "contentFormat", contentFormat },
+            { "trafficType", trafficType },
+            { "ttlSeconds", ttlSeconds },
+            { "expireTime", expireTime },
+            { "fallback", fallback },
+            { "statusCallbackUrl", statusCallbackUrl },
+            { "enableShortlink", enableShortlink },
+            { "isTest", isTest },
+            { "simulate", simulate },
+        });
+        return await _client.RequestAsync("/message/rcs/batch", HttpMethod.Post, payload, options);
     }
 
     /// <summary>
@@ -547,7 +742,7 @@ public sealed class RcsMessagesDomain
     /// </summary>
     /// <param name="messageId">The message ID.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>The message; an unknown ID is a 404.</returns>
+    /// <returns>The message; an unknown ID is a 404. A settled RCS message carries carrierFeeMicros, the carrier pass-through and media surcharge it was charged.</returns>
     /// <exception cref="ValidationException">messageId is null.</exception>
     public async Task<SignalHouseResponse> GetAsync(
         string messageId,
@@ -576,7 +771,7 @@ public sealed class RcsMessagesDomain
     /// <param name="deliveredChannel">The channel that delivered the message: rcs, sms or mms.</param>
     /// <param name="isTest">true for test messages only, false to leave them out.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>The messages.</returns>
+    /// <returns>The messages; a settled RCS message carries carrierFeeMicros.</returns>
     /// <exception cref="ValidationException">groupId, from or to is null.</exception>
     public async Task<SignalHouseResponse> ListAsync(
         string groupId,
@@ -651,7 +846,7 @@ internal static class RcsAgentRequests
 
     /// <summary>
     /// Build a create or update body; null fields are dropped, and unlinkCampaign, clearUseCase and
-    /// clearDefaultFallback send their field as null.
+    /// clearDefaultFallback send their field as null. autofill holds the prefill markers by field path.
     /// </summary>
     internal static Dictionary<string, object?> Body(
         string? brandId,
@@ -666,7 +861,8 @@ internal static class RcsAgentRequests
         List<string>? excludedCarriers,
         List<string>? testers,
         bool clearUseCase = false,
-        bool clearDefaultFallback = false)
+        bool clearDefaultFallback = false,
+        object? autofill = null)
     {
         var payload = new Dictionary<string, object?>();
         void Set(string key, object? value, bool clear = false)
@@ -691,6 +887,7 @@ internal static class RcsAgentRequests
         Set("defaultFallback", defaultFallback, clearDefaultFallback);
         Set("excludedCarriers", excludedCarriers);
         Set("testers", testers);
+        Set("autofill", autofill);
         return payload;
     }
 

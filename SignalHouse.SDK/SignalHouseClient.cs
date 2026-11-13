@@ -63,6 +63,9 @@ public class SignalHouseClient
     /// <summary>User account management.</summary>
     public UsersDomain Users { get; }
 
+    /// <summary>Carrier phone-number checks on /verify: SIM Swap and Number Verify.</summary>
+    public VerifyDomain Verify { get; }
+
     /// <summary>Voice operations: SIP trunks, SIP endpoints (profiles), call origination, and WebRTC tokens.</summary>
     public VoiceDomain Voice { get; }
 
@@ -116,6 +119,7 @@ public class SignalHouseClient
         Templates = new TemplatesDomain(client);
         Tickets = new TicketsDomain(client, enableAdmin);
         Users = new UsersDomain(client, enableAdmin);
+        Verify = new VerifyDomain(client);
         Voice = new VoiceDomain(client);
         Webhooks = new WebhooksDomain(client);
         Agents = new AgentsDomain(client);
