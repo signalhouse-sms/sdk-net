@@ -250,6 +250,19 @@ public sealed class BrandsDomain
     }
 
     /// <summary>
+    /// Get TCR's identity feedback for a brand: why TCR could not verify it (status UNVERIFIED).
+    /// </summary>
+    /// <param name="brandId">Brand lookup id (carrier Brand ID, record _id, or internal reference).</param>
+    /// <param name="options">Optional per-request overrides.</param>
+    public async Task<SignalHouseResponse> GetBrandFeedbackAsync(string brandId, RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "brandId", brandId } });
+
+        var safeBrandId = Uri.EscapeDataString(brandId);
+        return await _client.RequestAsync($"/brand/feedback/{safeBrandId}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
     /// Submit an appeal for a brand (multipart/form-data).
     /// </summary>
     /// <param name="brandId">Brand lookup id (carrier Brand ID, record _id, or internal reference).</param>

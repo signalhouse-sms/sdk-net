@@ -651,7 +651,7 @@ public sealed class RcsMessagesDomain
     /// <param name="expireTime">ISO-8601 time the RCS message expires.</param>
     /// <param name="fallback">As on SendAsync, but its from is optional here; with none, the leg is priced on the channel of the agent's linked campaign.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>{ billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB for one recipient, and rcsLeg.cost already holds it for every recipient; rcsLeg.cost is null with the fallback mode sms_only; a message over 100 MB adds a MEDIA_TOO_LARGE issue.</returns>
+    /// <returns>{ billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB for one recipient, and rcsLeg.cost already holds it for every recipient; rcsLeg.cost is null with the fallback mode sms_only; a message over 100 MB adds a MEDIA_TOO_LARGE issue, and an external media URL that redirects adds a MEDIA_REDIRECT issue.</returns>
     /// <exception cref="ValidationException">agentId is null.</exception>
     public async Task<SignalHouseResponse> EstimateAsync(
         string agentId,

@@ -120,6 +120,8 @@ public sealed class TemplatesDomain
     /// and warnings; no draft is a 409 NO_DRAFT; a draft that changed while it was being published is a 409 DRAFT_CHANGED
     /// (publish again). A block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED, whose
     /// message names the category ("Content moderation flagged this text: spam"). The check passes when the Moderation API fails.
+    /// An image URL with a variable is moderated at send instead, with its value filled in, and a refused image blocks the
+    /// recipient with MODERATION.
     /// </summary>
     /// <param name="templateId">The template ID.</param>
     /// <param name="groupId">The owning group.</param>
@@ -239,7 +241,7 @@ public sealed class TemplatesDomain
     /// <param name="file">The file content.</param>
     /// <param name="fileName">The file name sent with the upload.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>The stored media asset.</returns>
+    /// <returns>The stored media asset. An image over 1920 px or 5,000,000 bytes is stored compressed; variants.mms is the MMS copy of an image over the MMS size limit.</returns>
     public async Task<SignalHouseResponse> UploadMediaAsync(
         string groupId,
         Stream file,
