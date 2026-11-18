@@ -21,6 +21,9 @@ public class SignalHouseClient
     /// <summary>10DLC campaign registration and management.</summary>
     public CampaignsDomain Campaigns { get; }
 
+    /// <summary>Compliance cases on /compliance: read your cases, answer their requirements and upload files.</summary>
+    public ComplianceDomain Compliance { get; }
+
     /// <summary>Group management.</summary>
     public GroupsDomain Groups { get; }
 
@@ -105,6 +108,7 @@ public class SignalHouseClient
         Billing = new BillingDomain(client);
         Brands = new BrandsDomain(client);
         Campaigns = new CampaignsDomain(client, enableAdmin);
+        Compliance = new ComplianceDomain(client);
         Groups = new GroupsDomain(client, enableAdmin);
         Landings = new LandingsDomain(client);
         Messages = new MessagesDomain(client);

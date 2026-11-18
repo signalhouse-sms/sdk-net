@@ -57,6 +57,58 @@ public sealed class SubgroupsDomain
     }
 
     /// <summary>
+    /// Resolve the mapping between a GoHighLevel location and a Signal House subgroup, in either
+    /// direction. Provide exactly one of ghlLocationId or subgroupId. groupId is optional - customer
+    /// roles default to their own accessible group(s) and are rejected if they name a group they
+    /// don't belong to; a subgroupId/ghlLocationId that belongs to a different group than the
+    /// caller's returns a 404, identical to a nonexistent one.
+    /// </summary>
+    public async Task<SignalHouseResponse> LookupGhlLocationAsync(
+        string? groupId = null,
+        string? ghlLocationId = null,
+        string? subgroupId = null,
+        RequestOptions? options = null)
+    {
+        var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
+        {
+            { "groupId", groupId },
+            { "ghlLocationId", ghlLocationId },
+            { "subgroupId", subgroupId },
+        });
+        return await _client.RequestAsync($"/subgroup/ghl-location-lookup{qs}", HttpMethod.Get, options: options);
+    }
+
+    /// <summary>
+    /// Link (or, with ghlLocationId null, unlink) a GoHighLevel location to a subgroup. Requires
+    /// signalhouse_api or signalhouse_admin role. At most one subgroup may hold a given
+    /// ghlLocationId; linking it here steals it from any other subgroup that currently holds it.
+    /// ghlLocationName omitted (left null, the default) leaves the subgroup's currently stored name
+    /// untouched (only when ghlLocationId is unchanged - otherwise it is cleared); always cleared when
+    /// unlinking. claimedAt is required when ghlLocationId is non-null: when this link was locally
+    /// claimed by the caller, used to detect and reject a delayed/out-of-order push whose claim has
+    /// since been superseded by a newer one recorded elsewhere; ignored when unlinking.
+    /// </summary>
+    public async Task<SignalHouseResponse> LinkGhlLocationAsync(
+        string subgroupId,
+        string? ghlLocationId,
+        string? ghlLocationName = null,
+        DateTimeOffset? claimedAt = null,
+        RequestOptions? options = null)
+    {
+        HttpClientWrapper.Require(new Dictionary<string, object?> { { "subgroupId", subgroupId } });
+        if (ghlLocationId != null)
+        {
+            HttpClientWrapper.Require(new Dictionary<string, object?> { { "claimedAt", claimedAt } });
+        }
+
+        var body = new Dictionary<string, object?> { { "subgroupId", subgroupId }, { "ghlLocationId", ghlLocationId } };
+        if (ghlLocationName != null) body["ghlLocationName"] = ghlLocationName;
+        if (claimedAt != null) body["claimedAt"] = claimedAt.Value.ToString("o");
+
+        return await _client.RequestAsync("/subgroup/ghl-location-link", HttpMethod.Put, body, options);
+    }
+
+    /// <summary>
     /// Create a new subgroup.
     /// subgroupData may include optional carrierIdFamily and carrierIdRegion fields.
     /// Setting those fields requires signalhouse_api, signalhouse_admin, signalhouse_user,

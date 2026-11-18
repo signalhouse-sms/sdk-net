@@ -336,6 +336,9 @@ BRANDS  (client.Brands)
       string explanation, Stream? file, RequestOptions? options)
     Submit a brand identity status appeal with supporting documentation.
     Uses multipart/form-data automatically.
+    TCR refusal: a 4xx (e.g. TCR code 592, brand older than 45 days) returns
+      { error: "TCR refused the appeal: <reason>", details: { code, message } }
+      with TCR's own code and message. Retrying unchanged will be refused again.
     appealCategories: array of strings (VERIFY_TAX_ID, VERIFY_NON_PROFIT, VERIFY_GOVERNMENT)
     explanation: string (max 1024 chars)
     file: Stream (supported: .jpg, .jpeg, .png, .bmp, .raw, .tiff, .pdf, .docx, .htm, .odt, .rtf, .txt, .xml)
@@ -370,6 +373,61 @@ CAMPAIGNS  (client.Campaigns)
     Sends a POST to /campaign/nudge/:campaignId.
     No request body required.
     Returns 200: { message: "Nudge successful" }
+
+
+COMPLIANCE  (client.Compliance)
+--------------------------------------------------------------------------------
+  Compliance cases under /compliance. Signal House opens a case when a carrier
+  suspends one of your objects, a carrier escalates a message, or Signal House
+  needs something from you. You read your cases, answer their requirements and
+  upload files; only Signal House opens, works and closes them.
+
+  Number release closes that number's alerts immediately. Eligible cases have
+  closeReason NUMBER_RELEASED; shared cases stay open for other alerts,
+  requirements or review. Released blocks include numberReleasedAt without
+  inventing liftedAt.
+
+  GetCasesAsync(string? groupId, string? status, string? stage,
+      string? objectType, string? objectId, string? subgroupId,
+      bool? suspended, string? from, string? to, string? sort, int? page,
+      int? limit, RequestOptions? options)
+    GET /compliance/cases. Lists the cases you can see, newest first. groupId
+    defaults to your active group. status: OPEN, LIFT_REQUESTED or CLOSED;
+    stage: new, customer, ready, lift_requested or closed; objectType:
+    CAMPAIGN, BRAND, NUMBER, RCS_AGENT or SUBGROUP. suspended: true for cases
+    with an open suspension or hold, false for the rest. from and to (ISO 8601)
+    bound the open time. sort: createdAt (default), fixBy or severity.
+    limit: 1-200. Returns { data, total, page, limit, totalPages,
+    counts: { open, waitingOnYou } }; waitingOnYou is the open cases with
+    requirements still to answer.
+    Roles: api, admin, developer, billing, user.
+
+  GetCaseAsync(string caseId, RequestOptions? options)
+    GET /compliance/cases/:caseId. Returns the case: its stage, suspensions,
+    tickets and requirements. Roles: api, admin, developer, billing, user.
+
+  AnswerRequirementAsync(string caseId, string requirementId, string? answer,
+      List<string>? fileIds, RequestOptions? options)
+    PUT /compliance/cases/:caseId/requirements/:requirementId with
+    { answer?, fileIds? }; null arguments are left out of the body. answer is
+    up to 2,000 characters; fileIds holds up to 10 fileIds from
+    UploadFileAsync, on this case. A RECORDS requirement needs a file or a
+    note. Returns the case. Roles: api, admin, developer, user.
+
+  UploadFileAsync(string caseId, Stream file, string? fileName,
+      string? requirementId, RequestOptions? options)
+    POST /compliance/files (multipart/form-data) with caseId, requirementId
+    (only when given) and file. CSV, XLSX, PDF, PNG, JPG or TXT, up to 10 MB.
+    The API recognizes CSV and TXT files by the fileName extension. fileName
+    defaults to the name of a FileStream, or "file" for any other stream.
+    Returns { fileId, fileName, mimeType, size }. Pass fileId in fileIds when
+    you answer the requirement. Roles: api, admin, developer, user.
+
+  GetFileAsync(string fileId, RequestOptions? options)
+    GET /compliance/files/:fileId. Returns SignalHouseFileResponse with the
+    exact byte[] in Data on success. Failure has Data null and the normal
+    Error and Status fields. Existing JSON methods retain SignalHouseResponse.
+    Roles: api, admin, developer, billing, user.
 
 
 GROUPS  (client.Groups)
@@ -1135,6 +1193,7 @@ WEBHOOKS  (client.Webhooks)
     - client.Landings.UpdateLandingAsync(...)
     - client.Brands.SubmitAppealAsync(...)
     - client.Templates.UploadMediaAsync(...)
+    - client.Compliance.UploadFileAsync(...)
 
   You do not need to construct MultipartFormDataContent manually. Pass
   parameters as normal arguments and the SDK builds the form data internally.

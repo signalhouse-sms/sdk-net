@@ -10,6 +10,7 @@ namespace SignalHouse.SDK.Domains;
 ///   <item><c>client.Voice.SipProfiles</c> — single registerable SIP endpoints.</item>
 ///   <item><c>client.Voice.ProgrammableVoiceProfiles</c> — route a set of numbers through Signal House.</item>
 ///   <item><c>client.Voice.NumberRoutes</c> — per-number inbound route (overrides the profile and subgroup settings).</item>
+///   <item><c>client.Voice.CallFlows</c> — call flows: customer-built call trees a number or profile can run.</item>
 ///   <item><c>client.Voice.Calls</c> — outbound call origination and call log queries.</item>
 ///   <item><c>client.Voice.CallLogs</c> — account-scoped call history: list/get + presigned recording.</item>
 ///   <item><c>client.Voice.Analytics</c> — aggregated call metrics (summary tiles + byDate/byNumber/byCarrier breakdowns).</item>
@@ -30,6 +31,9 @@ public sealed class VoiceDomain
 
     /// <summary>Per-number inbound route (overrides the Programmable Voice Profile and subgroup settings).</summary>
     public NumberRoutesDomain NumberRoutes { get; }
+
+    /// <summary>Call flows: customer-built call trees a number or Programmable Voice Profile can run.</summary>
+    public CallFlowsDomain CallFlows { get; }
 
     /// <summary>Outbound call origination and call log queries.</summary>
     public CallsDomain Calls { get; }
@@ -52,6 +56,7 @@ public sealed class VoiceDomain
         SipProfiles = new SipProfilesDomain(client);
         ProgrammableVoiceProfiles = new ProgrammableVoiceProfilesDomain(client);
         NumberRoutes = new NumberRoutesDomain(client);
+        CallFlows = new CallFlowsDomain(client);
         Calls = new CallsDomain(client);
         CallLogs = new CallLogsDomain(client);
         Analytics = new AnalyticsDomain(client);

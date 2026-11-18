@@ -265,6 +265,11 @@ public sealed class BrandsDomain
     /// <summary>
     /// Submit an appeal for a brand (multipart/form-data).
     /// </summary>
+    /// <remarks>
+    /// When TCR refuses the appeal itself (a 4xx, e.g. code 592 for a brand older than 45 days),
+    /// the error body is { "error": "TCR refused the appeal: &lt;reason&gt;", "details": { "code", "message" } }
+    /// with TCR's own code and message. Retrying unchanged is refused again.
+    /// </remarks>
     /// <param name="brandId">Brand lookup id (carrier Brand ID, record _id, or internal reference).</param>
     /// <param name="appealCategories">List of appeal category strings.</param>
     /// <param name="explanation">Explanation text for the appeal.</param>

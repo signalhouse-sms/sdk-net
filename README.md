@@ -6,7 +6,7 @@ Full API reference and guides: https://app2.signalhouse.io/docs
 
 - Targets **.NET 8**
 - Zero external dependencies (`System.Net.Http` + `System.Text.Json` only)
-- Fully async (`Task<SignalHouseResponse>`) API
+- Fully async API with JSON and binary-file responses
 - 14 domain modules matching the REST API one-to-one
 
 ## Installation
@@ -131,7 +131,7 @@ var result = await adminClient.Campaigns.Admin!.ApproveCampaignAsync("campaign-i
 
 ## Response Format
 
-Every method returns a `SignalHouseResponse`:
+JSON methods return a `SignalHouseResponse`:
 
 | Property  | Type           | Description                                    |
 |-----------|----------------|------------------------------------------------|
@@ -139,6 +139,8 @@ Every method returns a `SignalHouseResponse`:
 | `Data`    | `JsonElement?` | Parsed JSON response body                      |
 | `Error`   | `string?`      | Error message (from response or reason phrase)  |
 | `Status`  | `int`          | HTTP status code                               |
+
+`Compliance.GetFileAsync` returns `SignalHouseFileResponse` with the same status/error fields and `byte[]? Data`. It preserves file bytes without decoding them as JSON.
 
 ## Domains
 
@@ -148,6 +150,7 @@ Every method returns a `SignalHouseResponse`:
 | `Billing`       | `BillingDomain`        | 9       |
 | `Brands`        | `BrandsDomain`         | 16      |
 | `Campaigns`     | `CampaignsDomain`      | 4 + 2 admin |
+| `Compliance`    | `ComplianceDomain`     | 5       |
 | `Groups`        | `GroupsDomain`         | 2 + 3 admin |
 | `Landings`      | `LandingsDomain`       | 6       |
 | `Messages`      | `MessagesDomain`       | 5       |

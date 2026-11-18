@@ -75,6 +75,28 @@ public sealed class HttpClientWrapper
         return await SendAsync(request);
     }
 
+    /// <summary>Download raw file bytes, using the normal error decoder on HTTP failure.</summary>
+    /// <param name="path">The API file path.</param>
+    /// <param name="options">Authentication and additional request headers.</param>
+    /// <returns>A byte response on success, or a normalized API error.</returns>
+    public async Task<SignalHouseFileResponse> FileRequestAsync(string path, RequestOptions? options = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}{path}");
+        ApplyHeaders(request, options);
+        using var httpResponse = await SendHttpAsync(request);
+        if (httpResponse.IsSuccessStatusCode)
+        {
+            return new SignalHouseFileResponse
+            {
+                Success = true,
+                Status = (int)httpResponse.StatusCode,
+                Data = await httpResponse.Content.ReadAsByteArrayAsync(),
+            };
+        }
+        var error = await ParseResponseAsync(httpResponse);
+        return new SignalHouseFileResponse { Success = false, Status = error.Status, Error = error.Error };
+    }
+
     /// <summary>
     /// Build a query string from a dictionary of parameters, skipping null values.
     /// </summary>
@@ -124,69 +146,74 @@ public sealed class HttpClientWrapper
         }
     }
 
-    private async Task<SignalHouseResponse> SendAsync(HttpRequestMessage request)
+    private async Task<HttpResponseMessage> SendHttpAsync(HttpRequestMessage request)
     {
-        HttpResponseMessage httpResponse;
         try
         {
-            httpResponse = await _httpClient.SendAsync(request);
+            return await _httpClient.SendAsync(request);
         }
         catch (HttpRequestException ex)
         {
             throw new SignalHouseException($"HTTP request failed: {ex.Message}", ex);
         }
+    }
 
-        using (httpResponse)
+    private async Task<SignalHouseResponse> SendAsync(HttpRequestMessage request)
+    {
+        using var httpResponse = await SendHttpAsync(request);
+        return await ParseResponseAsync(httpResponse);
+    }
+
+    private static async Task<SignalHouseResponse> ParseResponseAsync(HttpResponseMessage httpResponse)
+    {
+        var response = new SignalHouseResponse
         {
-            var response = new SignalHouseResponse
-            {
-                Status = (int)httpResponse.StatusCode,
-                Success = httpResponse.IsSuccessStatusCode,
-            };
+            Status = (int)httpResponse.StatusCode,
+            Success = httpResponse.IsSuccessStatusCode,
+        };
 
-            var responseBody = await httpResponse.Content.ReadAsStringAsync();
+        var responseBody = await httpResponse.Content.ReadAsStringAsync();
 
-            if (!string.IsNullOrWhiteSpace(responseBody))
+        if (!string.IsNullOrWhiteSpace(responseBody))
+        {
+            try
             {
-                try
+                using var doc = JsonDocument.Parse(responseBody);
+                var root = doc.RootElement.Clone();
+
+                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var errorProp))
                 {
-                    using var doc = JsonDocument.Parse(responseBody);
-                    var root = doc.RootElement.Clone();
-
-                    if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var errorProp))
-                    {
-                        response.Error = errorProp.ValueKind == JsonValueKind.String
-                            ? errorProp.GetString()
-                            : errorProp.GetRawText();
-                    }
-
-                    if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("message", out var msgProp) && response.Error is null)
-                    {
-                        if (!httpResponse.IsSuccessStatusCode)
-                        {
-                            response.Error = msgProp.ValueKind == JsonValueKind.String
-                                ? msgProp.GetString()
-                                : msgProp.GetRawText();
-                        }
-                    }
-
-                    response.Data = root;
+                    response.Error = errorProp.ValueKind == JsonValueKind.String
+                        ? errorProp.GetString()
+                        : errorProp.GetRawText();
                 }
-                catch (JsonException)
+
+                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("message", out var msgProp) && response.Error is null)
                 {
                     if (!httpResponse.IsSuccessStatusCode)
                     {
-                        response.Error = responseBody;
+                        response.Error = msgProp.ValueKind == JsonValueKind.String
+                            ? msgProp.GetString()
+                            : msgProp.GetRawText();
                     }
                 }
-            }
 
-            if (!httpResponse.IsSuccessStatusCode && response.Error is null)
+                response.Data = root;
+            }
+            catch (JsonException)
             {
-                response.Error = httpResponse.ReasonPhrase;
+                if (!httpResponse.IsSuccessStatusCode)
+                {
+                    response.Error = responseBody;
+                }
             }
-
-            return response;
         }
+
+        if (!httpResponse.IsSuccessStatusCode && response.Error is null)
+        {
+            response.Error = httpResponse.ReasonPhrase;
+        }
+
+        return response;
     }
 }

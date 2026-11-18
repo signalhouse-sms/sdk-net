@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace SignalHouse.SDK.Models;
 
 /// <summary>
-/// Standardized response wrapper returned by all SDK methods.
+/// Standardized response wrapper returned by JSON SDK methods.
 /// </summary>
 public class SignalHouseResponse
 {

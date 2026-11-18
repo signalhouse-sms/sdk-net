@@ -35,14 +35,17 @@ public sealed class NumberRoutesDomain
     /// <summary>
     /// Set (create or replace) a number's route. The whole route is replaced:
     /// fields the new routeAction doesn't use are cleared. Required: routeAction
-    /// (FORWARD | WEBRTC | SIP_TRUNK | SIP_PROFILE | CALL_CONTROL | AI | VOICEMAIL).
+    /// (FORWARD | WEBRTC | SIP_TRUNK | SIP_PROFILE | CALL_CONTROL | AI | VOICEMAIL | CALL_FLOW).
     /// Optional: forwardToE164 (required for FORWARD, or the WEBRTC no-answer
     /// destination when noAnswerAction is FORWARD), noAnswerAction (WEBRTC only:
     /// VOICEMAIL | FORWARD | KEEP_RINGING, default VOICEMAIL), noAnswerSeconds
     /// (WEBRTC only: 5-120, default 20), routeSipTrunkId (required for SIP_TRUNK),
     /// routeSipProfileId (required for SIP_PROFILE), webhookUrl (SHML program URL,
     /// required for CALL_CONTROL), routeAgentProfileId (AI agent profile id, AGP…,
-    /// required for AI), recordingEnabled. Unset fields must be omitted or null.
+    /// required for AI), routeCallFlowId (call flow in the number's subgroup,
+    /// required for CALL_FLOW; until the flow is published, calls fall through to
+    /// the number's profile or subgroup settings), recordingEnabled. Unset fields
+    /// must be omitted or null.
     /// A leading "+" on e164 is optional. Returns
     /// <c>{ e164, route: {...}, effective: {...} }</c>.
     /// <c>PUT /voice/api/v1/numbers/:e164/route</c>.

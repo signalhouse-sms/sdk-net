@@ -42,16 +42,18 @@ public sealed class ProgrammableVoiceProfilesDomain
 
     /// <summary>
     /// Create a Programmable Voice Profile. Required: name, subgroupIds. Optional:
-    /// region, routeAction (FORWARD | WEBRTC | SIP_TRUNK | SIP_PROFILE | CALL_CONTROL,
-    /// default FORWARD) — deliver the call to a PSTN number (FORWARD), ring the
+    /// region, routeAction (FORWARD | WEBRTC | SIP_TRUNK | SIP_PROFILE | CALL_CONTROL |
+    /// CALL_FLOW, default FORWARD) — deliver the call to a PSTN number (FORWARD), ring the
     /// profile's subgroup registered softphones (WEBRTC), send to a SIP trunk
-    /// (SIP_TRUNK), ring a registered SIP endpoint (SIP_PROFILE), or hand the call to
-    /// your programmable call-control webhook that returns SHML (CALL_CONTROL);
+    /// (SIP_TRUNK), ring a registered SIP endpoint (SIP_PROFILE), hand the call to
+    /// your programmable call-control webhook that returns SHML (CALL_CONTROL), or
+    /// run one of your call flows (CALL_FLOW);
     /// forwardToE164 (required when routeAction is FORWARD), routeSipTrunkId (required
     /// when routeAction is SIP_TRUNK), routeSipProfileId (required when routeAction is
     /// SIP_PROFILE), webhookUrl (inbound voice webhook / SHML program URL, required
-    /// when routeAction is CALL_CONTROL), forwardAfterSeconds, recordingEnabled,
-    /// enabled. Returns <c>{ profile: {...} }</c>.
+    /// when routeAction is CALL_CONTROL), routeCallFlowId (call flow in one of the
+    /// profile's subgroups, required when routeAction is CALL_FLOW),
+    /// forwardAfterSeconds, recordingEnabled, enabled. Returns <c>{ profile: {...} }</c>.
     /// <c>POST /voice/api/v1/programmable-voice-profiles</c>.
     /// </summary>
     public async Task<SignalHouseResponse> CreateAsync(IDictionary<string, object?> profileData, RequestOptions? options = null)
@@ -63,9 +65,10 @@ public sealed class ProgrammableVoiceProfilesDomain
     /// <summary>
     /// Update an existing Programmable Voice Profile (partial). Any of the create
     /// keys may be supplied, including routeAction (FORWARD | WEBRTC | SIP_TRUNK |
-    /// SIP_PROFILE | CALL_CONTROL), forwardToE164, routeSipTrunkId (required when
+    /// SIP_PROFILE | CALL_CONTROL | CALL_FLOW), forwardToE164, routeSipTrunkId (required when
     /// routeAction is SIP_TRUNK), routeSipProfileId (required when routeAction is
-    /// SIP_PROFILE), and webhookUrl (required when routeAction is CALL_CONTROL).
+    /// SIP_PROFILE), webhookUrl (required when routeAction is CALL_CONTROL), and
+    /// routeCallFlowId (required when routeAction is CALL_FLOW).
     /// Returns <c>{ profile: {...} }</c>.
     /// <c>PATCH /voice/api/v1/programmable-voice-profiles/:id</c>.
     /// </summary>
