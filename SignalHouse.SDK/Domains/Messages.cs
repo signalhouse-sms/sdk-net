@@ -945,6 +945,7 @@ public sealed class MessagesDomain
 
     /// <summary>
     /// Look up the carrier for a phone number. Always performs a fresh lookup (not cached). Billed per request.
+    /// An Australian number on ACMA's list of numbers reserved for TV, film and creative works is refused with a 400 as an invalid number, without a lookup or a charge.
     /// </summary>
     /// <param name="phoneNumber">The phone number to look up (10+ digits, no + prefix).</param>
     /// <param name="options">Optional per-request overrides.</param>
