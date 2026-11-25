@@ -16,6 +16,8 @@ namespace SignalHouse.SDK.Domains;
 ///   <item><c>client.Voice.Analytics</c> — aggregated call metrics (summary tiles + byDate/byNumber/byCarrier breakdowns).</item>
 ///   <item><c>client.Voice.GlobalVoiceSettings</c> — account-wide voice defaults (accepted regions, max spend, E911).</item>
 ///   <item><c>client.Voice.Tokens</c> — mint ephemeral SIP credentials for the browser voice SDK.</item>
+///   <item><c>client.Voice.PushCredentials</c> — mobile push: the Apple/Firebase credentials that wake your app for calls.</item>
+///   <item><c>client.Voice.PushDevices</c> — mobile push: register a device (called by the app with its voice token).</item>
 /// </list>
 /// </summary>
 public sealed class VoiceDomain
@@ -50,6 +52,12 @@ public sealed class VoiceDomain
     /// <summary>Ephemeral voice token + SIP credential minting for the browser/mobile voice SDK.</summary>
     public TokensDomain Tokens { get; }
 
+    /// <summary>Mobile push credentials: the Apple APNs key and Firebase service account that wake your app for calls.</summary>
+    public PushCredentialsDomain PushCredentials { get; }
+
+    /// <summary>Mobile push devices: register a device with the user's voice token so incoming calls wake it.</summary>
+    public PushDevicesDomain PushDevices { get; }
+
     internal VoiceDomain(HttpClientWrapper client)
     {
         SipTrunks = new SipTrunksDomain(client);
@@ -62,5 +70,7 @@ public sealed class VoiceDomain
         Analytics = new AnalyticsDomain(client);
         GlobalVoiceSettings = new GlobalVoiceSettingsDomain(client);
         Tokens = new TokensDomain(client);
+        PushCredentials = new PushCredentialsDomain(client);
+        PushDevices = new PushDevicesDomain(client);
     }
 }

@@ -33,6 +33,8 @@ public sealed class MessagesDomain
     /// Inbound messages in the response also carry sentimentScore (-100..100, null when unscored),
     /// sentimentLabel ("positive", "neutral" or "negative", null when sentimentScore is null) and
     /// sentimentScoredAt. Outbound messages are never scored.
+    /// Inbound messages also carry inReplyToMessageId: the message the reply answers, absent when there is none. If that
+    /// message has a parentMessageId, it was an RCS fallback, and the parent is the RCS message you sent.
     /// templateId through isTest are RCS filters and come last, so pass them by name.
     /// </summary>
     /// <param name="sortField">Field to sort by: createdAt, segmentCount, status, or sentimentScore.</param>
@@ -675,6 +677,7 @@ public sealed class MessagesDomain
     /// <param name="subgroupId">Optional. Explicit subgroup to attribute the send (and its inbound reply) to. P2P has no dedicated sender number, so pass this to record the send against a specific subgroup; it also resolves the group. Defaults to the group's oldest subgroup.</param>
     /// <param name="useSignalHouseShortlinks">Optional. When false, SignalHouse applies no link-shortening or text-spin and your pre-spun links/content are sent verbatim (bring-your-own spinner). Defaults to true.</param>
     /// <param name="options">Optional per-request overrides.</param>
+    /// <remarks>Deprecated: P2P messaging is retired and the API answers 410. This method will be removed in a future major release.</remarks>
     public async Task<SignalHouseResponse> SendP2PAsync(
         object recipientPhoneNumbers,
         string messageBody,
@@ -706,7 +709,7 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="id">The message ID.</param>
     /// <param name="options">Optional per-request overrides.</param>
-    /// <returns>The message; an unknown ID is a 404. An outbound RCS message and its fallback leg also carry costBreakdown, { legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }, which is null when it cannot be computed. A settled RCS message also carries carrierFeeMicros: the carrier pass-through and media surcharge it was charged.</returns>
+    /// <returns>The message; an unknown ID is a 404. An outbound RCS message and its fallback leg also carry costBreakdown, { legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }, which is null when it cannot be computed. A settled RCS message also carries carrierFeeMicros: the carrier pass-through and media surcharge it was charged. Inbound messages also carry inReplyToMessageId: the message the reply answers, absent when there is none. If that message has a parentMessageId, it was an RCS fallback, and the parent is the RCS message you sent.</returns>
     public async Task<SignalHouseResponse> GetMessageAsync(
         string id,
         RequestOptions? options = null)
@@ -742,6 +745,7 @@ public sealed class MessagesDomain
     /// </summary>
     /// <param name="batchId">The ID of the P2P batch to retrieve.</param>
     /// <param name="options">Optional per-request overrides.</param>
+    /// <remarks>Deprecated: P2P messaging is retired and the API answers 410. This method will be removed in a future major release.</remarks>
     public async Task<SignalHouseResponse> GetP2PBatchAsync(
         string batchId,
         RequestOptions? options = null)

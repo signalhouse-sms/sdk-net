@@ -29,6 +29,7 @@ public sealed class BrandsDomain
     /// </summary>
     /// <param name="registrationType">Optional registration-type filter ("TEN_DLC", "TOLL_FREE", or "SHORT_CODE").</param>
     /// <param name="currentTollFreeCarrier">With groupId or subgroupId: when true, return only toll-free brands that a new toll-free campaign in that group can use (those on the group's current toll-free carrier).</param>
+    /// <param name="search">Search terms, each sent as its own search key; every term must match (at most 5, each term 3 to 100 characters). Free text matches brandId, displayName and companyName (all eight fields below on a staff read of all brands); field:term searches one field: brandId, displayName, companyName, ein, email, groupId, subgroupId or referenceId.</param>
     public async Task<SignalHouseResponse> GetBrandsAsync(
         string? id = null,
         string? subgroupId = null,
@@ -38,7 +39,8 @@ public sealed class BrandsDomain
         string? status = null,
         string? registrationType = null,
         RequestOptions? options = null,
-        bool? currentTollFreeCarrier = null)
+        bool? currentTollFreeCarrier = null,
+        IEnumerable<string>? search = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -51,7 +53,7 @@ public sealed class BrandsDomain
             { "registrationType", registrationType },
             // bool.ToString() is "True"; the API expects lowercase.
             { "currentTollFreeCarrier", currentTollFreeCarrier?.ToString().ToLowerInvariant() },
-        });
+        }, new Dictionary<string, IEnumerable<string>?> { { "search", search } });
 
         return await _client.RequestAsync($"/brand{qs}", HttpMethod.Get, options: options);
     }

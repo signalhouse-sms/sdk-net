@@ -109,6 +109,7 @@ public sealed class NumbersDomain
     /// <param name="registrationId">Filter to numbers provisioned under this registration.</param>
     /// <param name="currentTollFreeCarrier">With groupId or subgroupId: when true, return only toll-free numbers that a new toll-free campaign in that group can use (those on the group's current toll-free carrier).</param>
     /// <param name="released">With subgroupId or groupId: when true, return only its released numbers (status RELEASED) instead of its active ones.</param>
+    /// <param name="search">Search terms, each sent as its own search key; every term must match (at most 5, each term 3 to 100 characters). A term is free text, or field:term to search one field: phoneNumber or friendlyName. A phone-like term matches the number's digits.</param>
     public async Task<SignalHouseResponse> GetPhoneNumbersAsync(
         string? phoneNumber = null,
         string? campaignId = null,
@@ -120,7 +121,8 @@ public sealed class NumbersDomain
         RequestOptions? options = null,
         string? registrationId = null,
         bool? currentTollFreeCarrier = null,
-        bool? released = null)
+        bool? released = null,
+        IEnumerable<string>? search = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -135,7 +137,7 @@ public sealed class NumbersDomain
             // bool.ToString() is "True"; the API expects lowercase.
             { "currentTollFreeCarrier", currentTollFreeCarrier?.ToString().ToLowerInvariant() },
             { "released", released?.ToString().ToLowerInvariant() },
-        });
+        }, new Dictionary<string, IEnumerable<string>?> { { "search", search } });
 
         return await _client.RequestAsync($"/number{qs}", HttpMethod.Get, options: options);
     }

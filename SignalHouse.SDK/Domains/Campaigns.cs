@@ -157,6 +157,7 @@ public sealed class CampaignsDomain
     /// to be told when an entry opens or is lifted.
     /// </remarks>
     /// <param name="registrationType">Optional registration-type filter ("TEN_DLC", "TOLL_FREE", or "SHORT_CODE").</param>
+    /// <param name="search">Search terms, each sent as its own search key; every term must match (at most 5, each term 3 to 100 characters). Free text matches campaignId (also brandId on a staff read of all campaigns); field:term searches one field: campaignId or brandId.</param>
     public async Task<SignalHouseResponse> GetCampaignsAsync(
         string? id = null,
         string? brandId = null,
@@ -166,7 +167,8 @@ public sealed class CampaignsDomain
         int? limit = null,
         string? status = null,
         string? registrationType = null,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        IEnumerable<string>? search = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -178,7 +180,7 @@ public sealed class CampaignsDomain
             { "limit", limit?.ToString() },
             { "status", status },
             { "registrationType", registrationType },
-        });
+        }, new Dictionary<string, IEnumerable<string>?> { { "search", search } });
 
         return await _client.RequestAsync($"/campaign{qs}", HttpMethod.Get, options: options);
     }

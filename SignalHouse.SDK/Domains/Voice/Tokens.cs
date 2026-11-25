@@ -28,7 +28,9 @@ public sealed class TokensDomain
     /// Mint an ephemeral voice token + SIP credentials. All fields on
     /// <paramref name="tokenData"/> are optional: <c>identity</c> (logical name,
     /// defaults to "anonymous"), <c>ttl</c> (seconds, clamped to server max),
-    /// <c>grants</c> (capability grants). When omitted entirely, an empty body is sent.
+    /// <c>grants</c> (capability grants), <c>subgroupId</c> (the subgroup whose inbound
+    /// calls ring this identity; required to receive calls and to register the device for
+    /// mobile push). When omitted entirely, an empty body is sent.
     /// Returns the token plus embedded SIP credentials (the password is sent ONCE,
     /// never recoverable).
     /// <c>POST /voice/tokens</c>.

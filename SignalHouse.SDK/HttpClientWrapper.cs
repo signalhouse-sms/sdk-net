@@ -102,12 +102,39 @@ public sealed class HttpClientWrapper
     /// </summary>
     public static string GetQueryString(Dictionary<string, string?> parameters)
     {
+        return GetQueryString(parameters, new Dictionary<string, IEnumerable<string>?>());
+    }
+
+    /// <summary>
+    /// Build a query string from single-value parameters, then append each repeated parameter's values as their own
+    /// key, in order. Null values, and null or empty value lists, are skipped.
+    /// </summary>
+    /// <param name="parameters">Parameters sent once each.</param>
+    /// <param name="repeated">Parameters sent once per value, e.g. search=a&amp;search=b.</param>
+    public static string GetQueryString(
+        Dictionary<string, string?> parameters,
+        Dictionary<string, IEnumerable<string>?> repeated)
+    {
         var pairs = new List<string>();
         foreach (var kvp in parameters)
         {
             if (kvp.Value is not null)
             {
                 pairs.Add($"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}");
+            }
+        }
+        foreach (var kvp in repeated)
+        {
+            if (kvp.Value is null)
+            {
+                continue;
+            }
+            foreach (var value in kvp.Value)
+            {
+                if (value is not null)
+                {
+                    pairs.Add($"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(value)}");
+                }
             }
         }
         return pairs.Count > 0 ? $"?{string.Join("&", pairs)}" : string.Empty;

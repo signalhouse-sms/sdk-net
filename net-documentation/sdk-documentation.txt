@@ -212,12 +212,19 @@ BRANDS  (client.Brands)
 --------------------------------------------------------------------------------
   GetBrandsAsync(string? id, string? subgroupId, string? groupId,
       int? page, int? limit, string? status, string? registrationType,
-      RequestOptions? options, bool? currentTollFreeCarrier)
+      RequestOptions? options, bool? currentTollFreeCarrier,
+      IEnumerable<string>? search)
     List brands with filters.
     currentTollFreeCarrier (after options, so pass it by name): with groupId
     or subgroupId, true returns only toll-free brands that a new toll-free
     campaign in that group can use (those on the group's current toll-free
     carrier).
+    search (after options, so pass it by name): search terms, each sent as its
+    own search key (?search=apex&search=displayName%3Adental); every term must
+    match. At most 5 terms, each 3 to 100 characters. Free text matches
+    brandId, displayName and companyName (all eight fields below on a staff
+    read of all brands); field:term searches one field: brandId, displayName,
+    companyName, ein, email, groupId, subgroupId or referenceId.
     Each toll-free brand carries tollFree.reviewsBusinessOnSubmit: whether
     it's reviewed when it's submitted and keeps its business details from
     then on. When that is true, the brand also carries its tollFree
@@ -348,8 +355,13 @@ CAMPAIGNS  (client.Campaigns)
 --------------------------------------------------------------------------------
   GetCampaignsAsync(string? id, string? brandId, string? subgroupId,
       string? groupId, int? page, int? limit, string? status,
-      RequestOptions? options)
+      string? registrationType, RequestOptions? options,
+      IEnumerable<string>? search)
     List campaigns with filters.
+    search (after options, so pass it by name): search terms, each sent as its
+    own search key; every term must match. At most 5 terms, each 3 to 100
+    characters. Free text matches campaignId (also brandId on a staff read of
+    all campaigns); field:term searches one field: campaignId or brandId.
 
   CreateCampaignAsync(object campaignData, RequestOptions? options)
     Create a new 10DLC campaign.
@@ -512,6 +524,10 @@ MESSAGES  (client.Messages)
     carrierMicros, rated }] }, which is null when it cannot be computed.
     A settled RCS message also carries carrierFeeMicros, the carrier
     pass-through and media surcharge it was charged.
+    Inbound messages also carry inReplyToMessageId: the message the reply
+    answers, absent when there is none. If that message has a
+    parentMessageId, it was an RCS fallback, and the parent is the RCS
+    message you sent.
 
   GetMessageInteractionsAsync(string id, RequestOptions? options)
     GET /message/:id/interactions. The taps on one RCS message, oldest first. Required: id
@@ -590,7 +606,7 @@ NUMBERS  (client.Numbers)
       string? brandId, string? subgroupId, string? groupId,
       int? page, int? limit, RequestOptions? options,
       string? registrationId, bool? currentTollFreeCarrier,
-      bool? released)
+      bool? released, IEnumerable<string>? search)
     List your phone numbers with filters.
     registrationId: filter to numbers provisioned under this registration.
     currentTollFreeCarrier (after options, so pass it by name): with groupId
@@ -600,6 +616,10 @@ NUMBERS  (client.Numbers)
     released (after options, so pass it by name): with subgroupId or groupId,
     true returns only its released numbers (status RELEASED) instead of its
     active ones.
+    search (after options, so pass it by name): search terms, each sent as its
+    own search key; every term must match. At most 5 terms, each 3 to 100
+    characters. A term is free text, or field:term to search one field:
+    phoneNumber or friendlyName. A phone-like term matches the number's digits.
 
   GetNumberHealthAsync(string phoneNumber, RequestOptions? options)
     Get the health score, the same one the portal shows, (1–10) for an owned phone number.
@@ -693,19 +713,23 @@ SHORTLINKS  (client.Shortlinks)
 SUBGROUPS  (client.Subgroups)
 --------------------------------------------------------------------------------
   GetSubgroupsAsync(string? id, string? groupId, int? page, int? limit,
-      RequestOptions? options)
+      RequestOptions? options, IEnumerable<string>? search)
     List subgroups with filters.
+    search (after options, so pass it by name): search terms, each sent as its
+    own search key; every term must match. At most 5 terms, each 3 to 100
+    characters. A term is free text, or field:term to search one field:
+    subgroupId, subgroupName or subgroupCompanyName.
 
   CreateSubgroupAsync(object subgroupData, RequestOptions? options)
     Create a new subgroup.
-    subgroupData may include optional carrierIdFamily and carrierIdRegion.
-    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    subgroupData may include carrierIdFamily and carrierIdRegion. Deprecated: accepted and
+    stored, with no effect on billing. Setting them requires signalhouse_api,
     signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
 
   UpdateSubgroupAsync(string id, object updateData, RequestOptions? options)
     Update subgroup details.
-    updateData may include optional carrierIdFamily and carrierIdRegion.
-    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    updateData may include carrierIdFamily and carrierIdRegion. Deprecated: accepted and
+    stored, with no effect on billing. Setting them requires signalhouse_api,
     signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
     updateData may also include optional cnamAutoApply (bool) and cnamBrandId
     (string, or null to clear).

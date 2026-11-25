@@ -742,7 +742,7 @@ public sealed class RcsMessagesDomain
     /// </summary>
     /// <param name="messageId">The message ID.</param>
     /// <param name="options">Additional request options.</param>
-    /// <returns>The message; an unknown ID is a 404. A settled RCS message carries carrierFeeMicros, the carrier pass-through and media surcharge it was charged.</returns>
+    /// <returns>The message; an unknown ID is a 404. A settled RCS message carries carrierFeeMicros, the carrier pass-through and media surcharge it was charged. An inbound RCS message also carries inReplyToMessageId: the message it answers, absent when there is none.</returns>
     /// <exception cref="ValidationException">messageId is null.</exception>
     public async Task<SignalHouseResponse> GetAsync(
         string messageId,

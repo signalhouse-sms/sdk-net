@@ -17,12 +17,14 @@ public sealed class SubgroupsDomain
     /// <summary>
     /// Get a list of subgroups with optional filters.
     /// </summary>
+    /// <param name="search">Search terms, each sent as its own search key; every term must match (at most 5, each term 3 to 100 characters). A term is free text, or field:term to search one field: subgroupId, subgroupName or subgroupCompanyName.</param>
     public async Task<SignalHouseResponse> GetSubgroupsAsync(
         string? id = null,
         string? groupId = null,
         int? page = null,
         int? limit = null,
-        RequestOptions? options = null)
+        RequestOptions? options = null,
+        IEnumerable<string>? search = null)
     {
         var qs = HttpClientWrapper.GetQueryString(new Dictionary<string, string?>
         {
@@ -30,7 +32,7 @@ public sealed class SubgroupsDomain
             { "groupId", groupId },
             { "page", page?.ToString() },
             { "limit", limit?.ToString() },
-        });
+        }, new Dictionary<string, IEnumerable<string>?> { { "search", search } });
 
         return await _client.RequestAsync($"/subgroup{qs}", HttpMethod.Get, options: options);
     }
@@ -110,7 +112,7 @@ public sealed class SubgroupsDomain
 
     /// <summary>
     /// Create a new subgroup.
-    /// subgroupData may include optional carrierIdFamily and carrierIdRegion fields.
+    /// subgroupData may include carrierIdFamily and carrierIdRegion. Deprecated: accepted and stored, with no effect on billing.
     /// Setting those fields requires signalhouse_api, signalhouse_admin, signalhouse_user,
     /// api, admin, developer, or billing role.
     /// </summary>
@@ -125,7 +127,7 @@ public sealed class SubgroupsDomain
 
     /// <summary>
     /// Update an existing subgroup.
-    /// updateData may include optional carrierIdFamily and carrierIdRegion fields.
+    /// updateData may include carrierIdFamily and carrierIdRegion. Deprecated: accepted and stored, with no effect on billing.
     /// Setting those fields requires signalhouse_api, signalhouse_admin, signalhouse_user,
     /// api, admin, developer, or billing role.
     /// updateData may also include optional cnamAutoApply (bool, turns caller name auto-apply on or off)
