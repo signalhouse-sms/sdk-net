@@ -263,6 +263,9 @@ public sealed class CampaignsDomain
     /// Create a new Toll-Free (TFN) campaign and submit it for Signal House review.
     /// registrationType is forced to TOLL_FREE server-side. TFN-specific fields live under
     /// campaignData["tollFree"].
+    /// privacyPolicyLink is required when the brand's tollFree.requiresPrivacyPolicy is true and neither the brand
+    /// nor the referenced Toll-Free landing page (tollFree.landingId) supplies one; termsAndConditionsLink likewise for
+    /// tollFree.requiresTermsAndConditions. Precedence: campaign, brand, landing page.
     /// </summary>
     /// <param name="campaignData">Toll-Free campaign creation payload (see API docs for required fields, including the tollFree sub-object).</param>
     /// <param name="options">Optional per-request overrides.</param>
